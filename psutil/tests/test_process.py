@@ -393,7 +393,7 @@ class TestProcess(PsutilTestCase):
 
     @pytest.mark.skipif(not HAS_IONICE, reason="not supported")
     @pytest.mark.skipif(
-        not WINDOWS, reason="not supported on this win version"
+        not (WINDOWS or CYGWIN), reason="Windows/Cygwin only"
     )
     def test_ionice_win(self):
         p = psutil.Process()
@@ -415,7 +415,7 @@ class TestProcess(PsutilTestCase):
             assert p.ionice() == psutil.IOPRIO_HIGH
         # errs
         with pytest.raises(
-            TypeError, match="value argument not accepted on Windows"
+            TypeError, match="value argument not accepted"
         ):
             p.ionice(psutil.IOPRIO_NORMAL, value=1)
         with pytest.raises(ValueError, match="is not a valid priority"):
@@ -1105,7 +1105,7 @@ class TestProcess(PsutilTestCase):
         OPENBSD or NETBSD, reason="not reliable on OPENBSD & NETBSD"
     )
     @pytest.mark.skipif(
-        CYGWIN, reason="Cygwin zombies remain queryable longer than Linux"
+        CYGWIN, reason="Cygwin /proc/[pid]/status ctx switches don't update"
     )
     def test_num_ctx_switches(self):
         p = psutil.Process()
@@ -1168,9 +1168,6 @@ class TestProcess(PsutilTestCase):
         assert grandchild.parents()[0] == child
         assert grandchild.parents()[1] == parent
 
-    @pytest.mark.skipif(
-        CYGWIN, reason="Cygwin process table updates are asynchronous"
-    )
     def test_children(self):
         parent = psutil.Process()
         assert not parent.children()
@@ -1179,6 +1176,13 @@ class TestProcess(PsutilTestCase):
         # CREATE_NO_WINDOW flag (enabled by default) which creates
         # an extra "conhost.exe" child.
         child = self.spawn_psproc(creationflags=0)
+        if CYGWIN:
+            # Cygwin process table updates are asynchronous —
+            # progressive backoff until child appears.
+            for i in range(5):
+                if parent.children():
+                    break
+                time.sleep(0.1 * (i + 1))
         children1 = parent.children()
         children2 = parent.children(recursive=True)
         for children in (children1, children2):
@@ -1186,9 +1190,6 @@ class TestProcess(PsutilTestCase):
             assert children[0].pid == child.pid
             assert children[0].ppid() == parent.pid
 
-    @pytest.mark.skipif(
-        CYGWIN, reason="Cygwin process table updates are asynchronous"
-    )
     def test_children_mocked_ctime(self):
         # Make sure we get a fresh copy of the ctime before processing
         # children(). We make the assumption that process children MUST
@@ -1206,6 +1207,11 @@ class TestProcess(PsutilTestCase):
         # CREATE_NO_WINDOW flag (enabled by default) which creates
         # an extra "conhost.exe" child.
         child = self.spawn_psproc(creationflags=0)
+        if CYGWIN:
+            for _ in range(20):
+                if parent.children():
+                    break
+                time.sleep(0.1)
         children1 = parent.children()
         children2 = parent.children(recursive=True)
         for children in (children1, children2):

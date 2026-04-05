@@ -1293,7 +1293,7 @@ class Process:
     def ionice_set(self, ioclass, value=None):
         """Set I/O priority via Win32 NtSetInformationProcess."""
         if value is not None:
-            raise TypeError("value argument not accepted on Windows")
+            raise TypeError("value argument not accepted on this platform")
         if ioclass not in (IOPRIO_VERYLOW, IOPRIO_LOW, IOPRIO_NORMAL,
                            IOPRIO_HIGH):
             raise ValueError(f"{ioclass!r} is not a valid priority")

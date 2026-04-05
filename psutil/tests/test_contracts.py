@@ -246,16 +246,18 @@ class TestSystemAPITypes(PsutilTestCase):
             assert isinstance(disk.opts, str)
 
     @pytest.mark.skipif(SKIP_SYSCONS, reason="requires root")
-    @pytest.mark.skipif(
-        CYGWIN,
-        reason="Cygwin unix sockets return EINPROGRESS on non-blocking connect",
-    )
     def test_net_connections(self):
-        with create_sockets():
-            ret = psutil.net_connections('all')
+        if CYGWIN:
+            # Cygwin unix sockets return EINPROGRESS on non-blocking
+            # connect; test inet only (TCP/UDP). Win32 GetExtendedTcpTable
+            # may return duplicate entries so skip uniqueness check.
+            ret = psutil.net_connections('inet')
+        else:
+            with create_sockets():
+                ret = psutil.net_connections('all')
             assert len(ret) == len(set(ret))
-            for conn in ret:
-                assert is_namedtuple(conn)
+        for conn in ret:
+            assert is_namedtuple(conn)
 
     def test_net_if_addrs(self):
         # Duplicate of test_system.py. Keep it anyway.

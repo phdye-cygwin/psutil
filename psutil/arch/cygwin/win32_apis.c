@@ -589,9 +589,15 @@ psutil_proc_ionice_set_win32(PyObject *self, PyObject *args)
     CloseHandle(hProcess);
 
     if (status != 0) {
-        PyErr_Format(PyExc_OSError,
-                     "NtSetInformationProcess(ProcessIoPriority) "
-                     "failed with status 0x%lx", (unsigned long)status);
+        /* 0xC0000061 = STATUS_PRIVILEGE_NOT_HELD */
+        if ((ULONG)status == 0xC0000061UL) {
+            PyErr_SetString(PyExc_PermissionError,
+                            "setting I/O priority requires elevated privileges");
+        } else {
+            PyErr_Format(PyExc_OSError,
+                         "NtSetInformationProcess(ProcessIoPriority) "
+                         "failed with status 0x%lx", (unsigned long)status);
+        }
         return NULL;
     }
 
