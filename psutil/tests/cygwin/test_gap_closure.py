@@ -139,3 +139,37 @@ class TestT3NumThreads:
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):
             psutil.Process(999999).num_threads()
+
+
+# ===================================================================
+# T4: net_if_stats() — own implementation
+# ===================================================================
+
+
+class TestT4NetIfStats:
+    """net_if_stats() must not delegate to _psposix."""
+
+    def test_returns_dict(self):
+        result = psutil.net_if_stats()
+        assert isinstance(result, dict)
+
+    def test_non_empty(self):
+        assert len(psutil.net_if_stats()) >= 1
+
+    def test_values_are_snicstats(self):
+        for name, stats in psutil.net_if_stats().items():
+            assert hasattr(stats, 'isup'), f"{name}: missing isup"
+            assert hasattr(stats, 'duplex'), f"{name}: missing duplex"
+            assert hasattr(stats, 'speed'), f"{name}: missing speed"
+            assert hasattr(stats, 'mtu'), f"{name}: missing mtu"
+
+    def test_isup_is_bool(self):
+        for name, stats in psutil.net_if_stats().items():
+            assert isinstance(stats.isup, bool), (
+                f"{name}: isup is {type(stats.isup).__name__}"
+            )
+
+    def test_mtu_positive(self):
+        stats = psutil.net_if_stats()
+        has_positive = any(s.mtu > 0 for s in stats.values())
+        assert has_positive, "no interface has mtu > 0"

@@ -355,9 +355,29 @@ def net_if_addrs():
 
 
 def net_if_stats():
-    """Return network interface statistics."""
-    # Use POSIX implementation for network interface statistics
-    return _psposix.net_if_stats()
+    """Return network interface stats using C extension helpers."""
+    from ._common import NIC_DUPLEX_FULL
+    from ._common import NIC_DUPLEX_HALF
+    from ._common import NIC_DUPLEX_UNKNOWN
+    from ._common import snicstats
+
+    ret = {}
+    names = set(r[0] for r in net_if_addrs())
+    for name in names:
+        try:
+            mtu = cext.net_if_mtu(name)
+            isup = bool(cext.net_if_is_running(name))
+            duplex, speed = cext.net_if_duplex_speed(name)
+            if duplex == 1:
+                duplex = NIC_DUPLEX_HALF
+            elif duplex == 2:
+                duplex = NIC_DUPLEX_FULL
+            else:
+                duplex = NIC_DUPLEX_UNKNOWN
+            ret[name] = snicstats(isup, duplex, speed, mtu, '')
+        except OSError:
+            continue
+    return ret
 
 
 def net_io_counters(pernic=False):
