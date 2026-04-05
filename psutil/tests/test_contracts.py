@@ -13,6 +13,7 @@ import signal
 
 import psutil
 from psutil import AIX
+from psutil import CYGWIN
 from psutil import FREEBSD
 from psutil import LINUX
 from psutil import MACOS
@@ -62,27 +63,27 @@ class TestAvailConstantsAPIs(PsutilTestCase):
         assert hasattr(psutil, "IOPRIO_CLASS_IDLE") == LINUX
 
     def test_linux_ioprio_windows(self):
-        assert hasattr(psutil, "IOPRIO_HIGH") == WINDOWS
-        assert hasattr(psutil, "IOPRIO_NORMAL") == WINDOWS
-        assert hasattr(psutil, "IOPRIO_LOW") == WINDOWS
-        assert hasattr(psutil, "IOPRIO_VERYLOW") == WINDOWS
+        assert hasattr(psutil, "IOPRIO_HIGH") == (WINDOWS or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_NORMAL") == (WINDOWS or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_LOW") == (WINDOWS or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_VERYLOW") == (WINDOWS or CYGWIN)
 
     @pytest.mark.skipif(
         GITHUB_ACTIONS and LINUX,
         reason="unsupported on GITHUB_ACTIONS + LINUX",
     )
     def test_rlimit(self):
-        assert hasattr(psutil, "RLIM_INFINITY") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_AS") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_CORE") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_CPU") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_DATA") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_FSIZE") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_MEMLOCK") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_NOFILE") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_NPROC") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_RSS") == LINUX or FREEBSD
-        assert hasattr(psutil, "RLIMIT_STACK") == LINUX or FREEBSD
+        assert hasattr(psutil, "RLIM_INFINITY") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_AS") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_CORE") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_CPU") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_DATA") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_FSIZE") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_MEMLOCK") == (LINUX or FREEBSD)
+        assert hasattr(psutil, "RLIMIT_NOFILE") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil, "RLIMIT_NPROC") == (LINUX or FREEBSD)
+        assert hasattr(psutil, "RLIMIT_RSS") == (LINUX or FREEBSD)
+        assert hasattr(psutil, "RLIMIT_STACK") == (LINUX or FREEBSD or CYGWIN)
 
         assert hasattr(psutil, "RLIMIT_LOCKS") == LINUX
         if POSIX:
@@ -112,7 +113,7 @@ class TestAvailSystemAPIs(PsutilTestCase):
     @pytest.mark.skipif(MACOS and AARCH64, reason="skipped due to #1892")
     def test_cpu_freq(self):
         assert hasattr(psutil, "cpu_freq") == (
-            LINUX or MACOS or WINDOWS or FREEBSD or OPENBSD
+            LINUX or MACOS or WINDOWS or FREEBSD or OPENBSD or CYGWIN
         )
 
     def test_sensors_temperatures(self):
@@ -123,7 +124,7 @@ class TestAvailSystemAPIs(PsutilTestCase):
 
     def test_battery(self):
         assert hasattr(psutil, "sensors_battery") == (
-            LINUX or WINDOWS or FREEBSD or MACOS
+            LINUX or WINDOWS or FREEBSD or MACOS or CYGWIN
         )
 
 
@@ -138,6 +139,7 @@ class TestAvailProcessAPIs(PsutilTestCase):
             or FREEBSD
             or OPENBSD
             or NETBSD
+            or CYGWIN
         )
 
     def test_uids(self):
@@ -150,14 +152,14 @@ class TestAvailProcessAPIs(PsutilTestCase):
         assert hasattr(psutil.Process, "terminal") == POSIX
 
     def test_ionice(self):
-        assert hasattr(psutil.Process, "ionice") == (LINUX or WINDOWS)
+        assert hasattr(psutil.Process, "ionice") == (LINUX or WINDOWS or CYGWIN)
 
     @pytest.mark.skipif(
         GITHUB_ACTIONS and LINUX,
         reason="unsupported on GITHUB_ACTIONS + LINUX",
     )
     def test_rlimit(self):
-        assert hasattr(psutil.Process, "rlimit") == (LINUX or FREEBSD)
+        assert hasattr(psutil.Process, "rlimit") == (LINUX or FREEBSD or CYGWIN)
 
     def test_io_counters(self):
         hasit = hasattr(psutil.Process, "io_counters")
@@ -171,12 +173,12 @@ class TestAvailProcessAPIs(PsutilTestCase):
 
     def test_cpu_affinity(self):
         assert hasattr(psutil.Process, "cpu_affinity") == (
-            LINUX or WINDOWS or FREEBSD
+            LINUX or WINDOWS or FREEBSD or CYGWIN
         )
 
     def test_cpu_num(self):
         assert hasattr(psutil.Process, "cpu_num") == (
-            LINUX or FREEBSD or SUNOS
+            LINUX or FREEBSD or SUNOS or CYGWIN
         )
 
     def test_memory_maps(self):

@@ -395,6 +395,10 @@ def net_if_stats():
                 duplex = NIC_DUPLEX_FULL
             else:
                 duplex = NIC_DUPLEX_UNKNOWN
+            if speed < 0:
+                speed = 0
+            if mtu < 0:
+                mtu = 0
             ret[name] = snicstats(isup, duplex, speed, mtu, '')
         except OSError:
             continue
@@ -517,6 +521,8 @@ def disk_partitions(all=False):
 def disk_usage(path):
     """Return disk usage statistics for path using C extension."""
     try:
+        if isinstance(path, bytes):
+            path = os.fsdecode(path)
         # C extension returns tuple: (total, used, free, percent)
         result = cext.disk_usage(path)
         return sdiskusage(*result)
