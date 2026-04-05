@@ -246,6 +246,10 @@ class TestSystemAPITypes(PsutilTestCase):
             assert isinstance(disk.opts, str)
 
     @pytest.mark.skipif(SKIP_SYSCONS, reason="requires root")
+    @pytest.mark.skipif(
+        CYGWIN,
+        reason="Cygwin unix sockets return EINPROGRESS on non-blocking connect",
+    )
     def test_net_connections(self):
         with create_sockets():
             ret = psutil.net_connections('all')

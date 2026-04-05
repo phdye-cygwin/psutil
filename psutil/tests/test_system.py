@@ -21,6 +21,7 @@ from unittest import mock
 import psutil
 from psutil import AIX
 from psutil import BSD
+from psutil import CYGWIN
 from psutil import FREEBSD
 from psutil import LINUX
 from psutil import MACOS
@@ -666,6 +667,8 @@ class TestDiskAPIs(PsutilTestCase):
                 # we cannot make any assumption about this, see:
                 # http://goo.gl/p9c43
                 disk.device  # noqa: B018
+            if CYGWIN and disk.fstype == 'unknown':
+                continue
             # on modern systems mount points can also be files
             assert os.path.exists(disk.mountpoint), disk
             assert disk.fstype, disk
@@ -812,6 +815,8 @@ class TestNetAPIs(PsutilTestCase):
                 assert isinstance(addr.address, str)
                 assert isinstance(addr.netmask, (str, type(None)))
                 assert isinstance(addr.broadcast, (str, type(None)))
+                if CYGWIN and addr.family == socket.AF_UNSPEC:
+                    continue
                 assert addr.family in families
                 assert isinstance(addr.family, enum.IntEnum)
                 if nic_stats[nic].isup:

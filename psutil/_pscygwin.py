@@ -191,6 +191,15 @@ PROC_STATUSES = {
     8: STATUS_ZOMBIE,
 }
 
+# Letter-based status from /proc/[pid]/stat field 3 (same as Linux)
+PROC_STATUSES_LETTER = {
+    "R": STATUS_RUNNING,
+    "S": STATUS_SLEEPING,
+    "D": STATUS_SLEEPING,  # disk sleep → sleeping on Cygwin
+    "T": STATUS_STOPPED,
+    "Z": STATUS_ZOMBIE,
+}
+
 # Connection status mapping from Windows constants to psutil constants
 TCP_STATUSES = {
     1: "ESTABLISHED",
@@ -301,8 +310,21 @@ def net_if_addrs():
     # Return this directly as psutil.__init__.py expects a list
     # sort
     cext_result = cext.net_if_addrs()
-    if cext_result:  # If C extension found interfaces, use them
-        return cext_result
+    if cext_result:
+        # Filter out AF_UNSPEC (family=0) and empty-address entries.
+        # Convert empty strings to None for broadcast/ptp fields —
+        # upstream expects None, not '', for absent values.
+        filtered = []
+        for name, family, addr, mask, bcast, ptp in cext_result:
+            if family == 0 or not addr:
+                continue
+            filtered.append((
+                name, family, addr,
+                mask or None,
+                bcast or None,
+                ptp or None,
+            ))
+        return filtered
     # If empty, fall through to fallback logic
 
     # Fallback: Try to get network interface info from system
@@ -586,96 +608,28 @@ def disk_io_counters(perdisk=False):
 # =====================================================================
 
 
-# CPU times namedtuple for system-wide CPU times
-# This will be defined based on what's available
-scputimes = None
-
-
-def _set_scputimes_ntuple():
-    """Set a namedtuple for system-wide CPU times based on availability.
-    For Cygwin, we start with basic fields similar to Windows/Linux.
-    """
-    global scputimes
-    if scputimes is not None:
-        return
-
-    # For Cygwin, we'll use a basic set of fields similar to other platforms
-    # Start with essential fields that should be available
-    fields = ['user', 'system', 'idle']
-
-    # Try to get CPU times from C extension if available
-    try:
-        # Test if C extension has cpu_times function
-        raw_times = cext.cpu_times()
-        if isinstance(raw_times, (tuple, list)):
-            # Adjust fields based on what C extension returns
-            if len(raw_times) >= 4:
-                fields.extend(['iowait'])  # Add iowait if available
-            if len(raw_times) >= 5:
-                fields.extend(['irq'])  # Add irq if available
-            if len(raw_times) >= 6:
-                fields.extend(['softirq'])  # Add softirq if available
-    except (AttributeError, OSError):
-        # C extension doesn't have cpu_times or failed
-        pass
-
-    # Create the named tuple
-    scputimes = namedtuple('scputimes', fields)
+# System-wide cpu_times uses the same 10-field tuple as per_cpu_times
+scputimes = scputimes_per_cpu
 
 
 def cpu_times():
-    """Return system-wide CPU times as a named tuple.
+    """Return system-wide CPU times.
 
-    For Cygwin, we try to use the C extension first. If that's not available,
-    we fall back to reading from /proc/stat similar to Linux.
+    Uses the same 10-field namedtuple as per_cpu_times() for consistency.
+    Fields not available from /proc/stat are set to 0.0.
     """
-    # Ensure named tuple is set up
-    _set_scputimes_ntuple()
-
-    # Try C extension first
-    try:
-        raw_times = cext.cpu_times()
-        if isinstance(raw_times, (tuple, list)) and len(raw_times) >= 3:
-            # Pad or truncate to match our named tuple fields
-            fields_needed = len(scputimes._fields)
-            if len(raw_times) >= fields_needed:
-                # Truncate if C extension returns more fields
-                values = raw_times[:fields_needed]
-            else:
-                # Pad with zeros if C extension returns fewer fields
-                values = list(raw_times) + [0.0] * (
-                    fields_needed - len(raw_times)
-                )
-            return scputimes(*values)
-    except (AttributeError, OSError):
-        # C extension not available or failed
-        pass
-
-    # Fallback: try to read from /proc/stat (Cygwin often has /proc)
     try:
         with open('/proc/stat', 'rb') as f:
             line = f.readline()
             if line.startswith(b'cpu '):
-                # Parse the CPU line: cpu user nice system idle iowait irq
-                # softirq steal guest guest_nice
-                values = line.split()[1:]
-                # Convert to float and get what we need
-                cpu_values = [
-                    float(x) for x in values[: len(scputimes._fields)]
-                ]
-
-                # Pad with zeros if we don't have enough values
-                while len(cpu_values) < len(scputimes._fields):
-                    cpu_values.append(0.0)
-
-                return scputimes(*cpu_values)
-    except (OSError, ValueError, IndexError):
-        # /proc/stat not available or malformed
+                values = [float(x) for x in line.split()[1:]]
+                # Pad to 10 fields
+                while len(values) < 10:
+                    values.append(0.0)
+                return scputimes(*values[:10])
+    except (OSError, ValueError):
         pass
-
-    # Last resort: return zeros
-    zero_values = [0.0] * len(scputimes._fields)
-    return scputimes(*zero_values)
+    return scputimes(*(0.0,) * 10)
 
 
 def per_cpu_times():
@@ -1064,8 +1018,11 @@ class Process:
 
     @wrap_exceptions
     def name(self):
-        """Get process name using C extension (Phase 3.2)."""
-        return cext.proc_name(self.pid)
+        """Return process name (basename of executable path)."""
+        name = cext.proc_name(self.pid)
+        if name and '/' in name:
+            name = os.path.basename(name)
+        return name
 
     @wrap_exceptions
     def exe(self):
@@ -1084,7 +1041,23 @@ class Process:
 
     @wrap_exceptions
     def status(self):
-        """Return process status as a STATUS_* string."""
+        """Return process status as a STATUS_* string.
+
+        Reads /proc/[pid]/stat field 3 (single letter) which is more
+        accurate than the Cygwin process table — the process table
+        doesn't clear PID_STOPPED after SIGCONT.
+        """
+        try:
+            with open(f'/proc/{self.pid}/stat', 'rb') as f:
+                data = f.read()
+            # Field 3 is after "(comm) " — find the closing paren
+            i = data.rfind(b') ')
+            if i != -1:
+                letter = chr(data[i + 2])
+                return PROC_STATUSES_LETTER.get(letter, '?')
+        except (OSError, IndexError, ValueError):
+            pass
+        # Fallback to C extension
         code = cext.proc_status(self.pid)
         return PROC_STATUSES.get(code, '?')
 
@@ -1244,6 +1217,11 @@ class Process:
     @wrap_exceptions
     def cpu_affinity_set(self, cpus):
         """Set CPUs this process is allowed to run on."""
+        allcpus = tuple(range(cpu_count_logical()))
+        for cpu in cpus:
+            if cpu not in allcpus:
+                raise ValueError(
+                    f"invalid CPU {cpu!r}; choose between {allcpus}")
         cext.proc_cpu_affinity_set(self.pid, cpus)
 
     @wrap_exceptions
@@ -1262,15 +1240,16 @@ class Process:
 
     @wrap_exceptions
     def open_files(self):
-        """Get list of open files using C extension (Phase 3.3).
+        """Return list of open regular files.
 
-        FIXED: Phase 3.3 - Issue #015
-        Return proper file objects with path and fd attributes.
+        Filters out non-regular files (/dev/null, /proc/*, etc.) using
+        isfile_strict(), same approach as macOS implementation.
         """
-        # C extension returns list of tuples (path, fd)
+        from ._common import isfile_strict
+
         files_data = cext.proc_open_files(self.pid)
-        # Convert to proper pfile namedtuples
-        return [pfile(path, fd) for path, fd in files_data]
+        return [pfile(path, fd) for path, fd in files_data
+                if isfile_strict(path)]
 
     @wrap_exceptions
     def net_connections(self, kind='inet'):
