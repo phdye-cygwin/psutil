@@ -200,6 +200,10 @@ static PyMethodDef mod_methods[] = {
      "Return battery info as (acline_status, flags, percent, secsleft)"},
     {"proc_threads", psutil_proc_threads_win32, METH_VARARGS,
      "Return list of (thread_id, user_time, system_time) for a process"},
+    {"proc_cpu_affinity_get", psutil_proc_cpu_affinity_get_win32, METH_VARARGS,
+     "Return list of CPU indices for process affinity mask"},
+    {"proc_cpu_affinity_set", psutil_proc_cpu_affinity_set_win32, METH_VARARGS,
+     "Set process CPU affinity mask from list of CPU indices"},
 
     {NULL, NULL, 0, NULL}
 };

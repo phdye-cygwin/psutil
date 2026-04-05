@@ -253,3 +253,130 @@ error:
         CloseHandle(hThreadSnap);
     return NULL;
 }
+
+/* ===================================================================
+ * --- cpu_affinity (from arch/windows/proc.c concept)
+ * =================================================================== */
+
+/*
+ * Return list of CPU indices this process is allowed to run on.
+ * Uses GetProcessAffinityMask from kernel32.
+ */
+PyObject *
+psutil_proc_cpu_affinity_get_win32(PyObject *self, PyObject *args)
+{
+    pid_t cygpid;
+    DWORD winpid;
+    HANDLE hProcess;
+    DWORD_PTR proc_mask, sys_mask;
+    PyObject *py_list;
+    int i;
+
+    if (!PyArg_ParseTuple(args, "i", &cygpid))
+        return NULL;
+
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid == 0) {
+        PyErr_Format(PyExc_ProcessLookupError,
+                     "process %d not found", cygpid);
+        return NULL;
+    }
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
+    if (hProcess == NULL) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        return NULL;
+    }
+
+    if (!GetProcessAffinityMask(hProcess, &proc_mask, &sys_mask)) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        CloseHandle(hProcess);
+        return NULL;
+    }
+    CloseHandle(hProcess);
+
+    py_list = PyList_New(0);
+    if (py_list == NULL)
+        return NULL;
+
+    for (i = 0; i < (int)(sizeof(DWORD_PTR) * 8); i++) {
+        if (proc_mask & ((DWORD_PTR)1 << i)) {
+            PyObject *py_cpu = PyLong_FromLong(i);
+            if (py_cpu == NULL) {
+                Py_DECREF(py_list);
+                return NULL;
+            }
+            if (PyList_Append(py_list, py_cpu)) {
+                Py_DECREF(py_cpu);
+                Py_DECREF(py_list);
+                return NULL;
+            }
+            Py_DECREF(py_cpu);
+        }
+    }
+    return py_list;
+}
+
+/*
+ * Set CPU affinity for a process.
+ * Takes a list of CPU indices, converts to a bitmask.
+ */
+PyObject *
+psutil_proc_cpu_affinity_set_win32(PyObject *self, PyObject *args)
+{
+    pid_t cygpid;
+    DWORD winpid;
+    HANDLE hProcess;
+    PyObject *py_cpus;
+    DWORD_PTR mask = 0;
+    Py_ssize_t i, len;
+
+    if (!PyArg_ParseTuple(args, "iO", &cygpid, &py_cpus))
+        return NULL;
+
+    if (!PyList_Check(py_cpus) && !PyTuple_Check(py_cpus)) {
+        PyErr_SetString(PyExc_TypeError, "cpus must be a list or tuple");
+        return NULL;
+    }
+
+    len = PySequence_Size(py_cpus);
+    if (len == 0) {
+        PyErr_SetString(PyExc_ValueError, "cpus list must not be empty");
+        return NULL;
+    }
+
+    for (i = 0; i < len; i++) {
+        PyObject *item = PySequence_GetItem(py_cpus, i);
+        long cpu = PyLong_AsLong(item);
+        Py_DECREF(item);
+        if (cpu == -1 && PyErr_Occurred())
+            return NULL;
+        if (cpu < 0 || cpu >= (long)(sizeof(DWORD_PTR) * 8)) {
+            PyErr_Format(PyExc_ValueError, "invalid CPU index %ld", cpu);
+            return NULL;
+        }
+        mask |= ((DWORD_PTR)1 << cpu);
+    }
+
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid == 0) {
+        PyErr_Format(PyExc_ProcessLookupError,
+                     "process %d not found", cygpid);
+        return NULL;
+    }
+
+    hProcess = OpenProcess(PROCESS_SET_INFORMATION, FALSE, winpid);
+    if (hProcess == NULL) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        return NULL;
+    }
+
+    if (!SetProcessAffinityMask(hProcess, mask)) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        CloseHandle(hProcess);
+        return NULL;
+    }
+
+    CloseHandle(hProcess);
+    Py_RETURN_NONE;
+}

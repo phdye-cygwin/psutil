@@ -1150,6 +1150,16 @@ class Process:
         return cext.setpriority(self.pid, value)
 
     @wrap_exceptions
+    def cpu_affinity_get(self):
+        """Return list of CPUs this process is allowed to run on."""
+        return cext.proc_cpu_affinity_get(self.pid)
+
+    @wrap_exceptions
+    def cpu_affinity_set(self, cpus):
+        """Set CPUs this process is allowed to run on."""
+        cext.proc_cpu_affinity_set(self.pid, cpus)
+
+    @wrap_exceptions
     def rlimit(self, resource_, limits=None):
         """Get or set process resource limits.
 

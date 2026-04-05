@@ -335,3 +335,36 @@ class TestT9Rlimit:
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):
             psutil.Process(999999).rlimit(psutil.RLIMIT_NOFILE)
+
+
+# ===================================================================
+# T10: Process.cpu_affinity()
+# ===================================================================
+
+
+class TestT10CpuAffinity:
+    """Process.cpu_affinity() via Win32 Get/SetProcessAffinityMask."""
+
+    def test_returns_list(self):
+        result = psutil.Process().cpu_affinity()
+        assert isinstance(result, list)
+        assert len(result) >= 1
+
+    def test_valid_cpu_indices(self):
+        cpus = psutil.Process().cpu_affinity()
+        ncpus = psutil.cpu_count()
+        for c in cpus:
+            assert 0 <= c < ncpus, f"CPU {c} out of range [0, {ncpus})"
+
+    def test_set_and_get(self):
+        p = psutil.Process()
+        original = p.cpu_affinity()
+        try:
+            p.cpu_affinity([0])
+            assert 0 in p.cpu_affinity()
+        finally:
+            p.cpu_affinity(original)
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).cpu_affinity()
