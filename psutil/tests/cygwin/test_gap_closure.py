@@ -74,3 +74,38 @@ class TestT1ProcessStatus:
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):
             psutil.Process(999999).status()
+
+
+# ===================================================================
+# T2: memory_percent() — pfullmem namedtuple
+# ===================================================================
+
+
+class TestT2MemoryPercent:
+    """memory_percent() must work — requires pfullmem at module scope."""
+
+    def test_pfullmem_at_module_scope(self):
+        assert hasattr(psutil._pscygwin, 'pfullmem'), (
+            "pfullmem must be defined at module scope in _pscygwin"
+        )
+
+    def test_pfullmem_fields(self):
+        expected = [
+            'rss', 'vms', 'shared', 'text', 'lib', 'data', 'dirty',
+            'uss', 'pss', 'swap',
+        ]
+        assert list(psutil._pscygwin.pfullmem._fields) == expected
+
+    def test_memory_percent_returns_float(self):
+        result = psutil.Process().memory_percent()
+        assert isinstance(result, float)
+        assert 0 <= result <= 100
+
+    def test_memory_percent_memtype_rss(self):
+        result = psutil.Process().memory_percent(memtype='rss')
+        assert isinstance(result, float)
+        assert 0 <= result <= 100
+
+    def test_memory_percent_memtype_vms(self):
+        result = psutil.Process().memory_percent(memtype='vms')
+        assert isinstance(result, float)

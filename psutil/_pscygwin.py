@@ -81,6 +81,10 @@ sswap = namedtuple(
 scpustats = namedtuple(
     'scpustats', ['ctx_switches', 'interrupts', 'soft_interrupts', 'syscalls']
 )
+pfullmem = namedtuple(
+    'pfullmem', ['rss', 'vms', 'shared', 'text', 'lib', 'data', 'dirty',
+                 'uss', 'pss', 'swap']
+)
 
 # Memory maps namedtuples for process memory mapping
 pmmap_grouped = namedtuple(
@@ -973,19 +977,7 @@ class Process:
 
     @wrap_exceptions
     def memory_full_info(self):
-        """Get full process memory information using C extension (Phase 4.2).
-
-        UPDATED: Phase 4.2 - Issue #011
-        Now uses C extension for extended memory information including
-        USS, PSS, swap.
-        """
-        # C extension returns 10-tuple:
-        # (rss, vms, shared, text, lib, data, dirty, uss, pss, swap)
-        from collections import namedtuple
-
-        pfullmem = namedtuple(
-            'pfullmem', 'rss vms shared text lib data dirty uss pss swap'
-        )
+        """Return extended process memory info (RSS, VMS, USS, PSS, swap)."""
         return pfullmem(*cext.proc_memory_full_info(self.pid))
 
     @wrap_exceptions
