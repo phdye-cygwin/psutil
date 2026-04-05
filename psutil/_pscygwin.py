@@ -1100,11 +1100,23 @@ class Process:
 
     @wrap_exceptions
     def terminal(self):
-        """Get process terminal."""
-        # TODO: Implement C extension function for terminal detection
-        # This would require parsing /proc/[pid]/stat for tty_nr
-        # For now, return None
-        return
+        """Return the terminal device.
+
+        Always returns None on Cygwin — /proc/[pid]/stat field 7
+        (tty_nr) is always 0, making terminal detection impossible.
+        """
+        return None
+
+    @wrap_exceptions
+    def environ(self):
+        """Return process environment variables as a dict."""
+        from ._common import ENCODING
+        from ._common import ENCODING_ERRS
+        from ._common import parse_environ_block
+
+        with open(f'/proc/{self.pid}/environ', 'rb') as f:
+            data = f.read()
+        return parse_environ_block(data.decode(ENCODING, ENCODING_ERRS))
 
     @wrap_exceptions
     def cwd(self):

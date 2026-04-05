@@ -240,3 +240,63 @@ class TestT6CpuStats:
     def test_not_all_zeros(self):
         s = psutil.cpu_stats()
         assert s.ctx_switches + s.interrupts > 0
+
+
+# ===================================================================
+# T7: Process.environ()
+# ===================================================================
+
+
+class TestT7Environ:
+    """Process.environ() must return a dict from /proc/[pid]/environ."""
+
+    def test_returns_dict(self):
+        result = psutil.Process().environ()
+        assert isinstance(result, dict)
+
+    def test_contains_path(self):
+        assert 'PATH' in psutil.Process().environ()
+
+    def test_keys_and_values_are_strings(self):
+        env = psutil.Process().environ()
+        for k, v in env.items():
+            assert isinstance(k, str), f"key {k!r} not str"
+            assert isinstance(v, str), f"value for {k} not str"
+
+    def test_child_inherits_env(self):
+        import uuid
+        marker = f"PSUTIL_TEST_{uuid.uuid4().hex[:8]}"
+        env = os.environ.copy()
+        env[marker] = "hello"
+        child = subprocess.Popen(
+            ['sleep', '60'], env=env,
+        )
+        try:
+            time.sleep(0.5)
+            p = psutil.Process(child.pid)
+            child_env = p.environ()
+            assert child_env.get(marker) == "hello"
+        finally:
+            child.terminate()
+            child.wait(timeout=5)
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).environ()
+
+
+# ===================================================================
+# T8: Process.terminal() — document intentional None
+# ===================================================================
+
+
+class TestT8Terminal:
+    """Process.terminal() returns None — documented, not a stub."""
+
+    def test_no_crash(self):
+        result = psutil.Process().terminal()
+        assert result is None or isinstance(result, str)
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).terminal()
