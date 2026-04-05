@@ -516,3 +516,206 @@ psutil_proc_ionice_get_win32(PyObject *self, PyObject *args)
 
     return PyLong_FromUnsignedLong(io_priority);
 }
+
+typedef LONG (WINAPI *NtSetInformationProcess_t)(
+    HANDLE ProcessHandle,
+    ULONG ProcessInformationClass,
+    PVOID ProcessInformation,
+    ULONG ProcessInformationLength
+);
+
+/*
+ * Set I/O priority for a process.
+ * Uses NtSetInformationProcess from ntdll.dll.
+ */
+PyObject *
+psutil_proc_ionice_set_win32(PyObject *self, PyObject *args)
+{
+    pid_t cygpid;
+    DWORD winpid;
+    HANDLE hProcess;
+    ULONG io_priority;
+    LONG status;
+    NtSetInformationProcess_t pNtSet;
+    HMODULE hNtdll;
+
+    if (!PyArg_ParseTuple(args, "ik", &cygpid, &io_priority))
+        return NULL;
+
+    if (io_priority > 4) {
+        PyErr_Format(PyExc_ValueError,
+                     "%lu is not a valid priority", (unsigned long)io_priority);
+        return NULL;
+    }
+
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid == 0) {
+        PyErr_Format(PyExc_ProcessLookupError,
+                     "process %d not found", cygpid);
+        return NULL;
+    }
+
+    hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "could not get ntdll.dll handle");
+        return NULL;
+    }
+
+    pNtSet = (NtSetInformationProcess_t)
+        GetProcAddress(hNtdll, "NtSetInformationProcess");
+    if (pNtSet == NULL) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "NtSetInformationProcess not found in ntdll.dll");
+        return NULL;
+    }
+
+    hProcess = OpenProcess(PROCESS_SET_INFORMATION, FALSE, winpid);
+    if (hProcess == NULL) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        return NULL;
+    }
+
+    status = pNtSet(hProcess, ProcessIoPriority,
+                    &io_priority, sizeof(io_priority));
+    CloseHandle(hProcess);
+
+    if (status != 0) {
+        PyErr_Format(PyExc_OSError,
+                     "NtSetInformationProcess(ProcessIoPriority) "
+                     "failed with status 0x%lx", (unsigned long)status);
+        return NULL;
+    }
+
+    Py_RETURN_NONE;
+}
+
+/* ===================================================================
+ * --- io_counters (via GetProcessIoCounters)
+ * =================================================================== */
+
+/*
+ * Return process I/O counters as (read_count, write_count, read_bytes,
+ * write_bytes, other_count, other_bytes).
+ */
+PyObject *
+psutil_proc_io_counters_win32(PyObject *self, PyObject *args)
+{
+    pid_t cygpid;
+    DWORD winpid;
+    HANDLE hProcess;
+
+    typedef struct {
+        unsigned long long ReadOperationCount;
+        unsigned long long WriteOperationCount;
+        unsigned long long OtherOperationCount;
+        unsigned long long ReadTransferCount;
+        unsigned long long WriteTransferCount;
+        unsigned long long OtherTransferCount;
+    } IO_COUNTERS_S;
+
+    IO_COUNTERS_S ioc;
+
+    if (!PyArg_ParseTuple(args, "i", &cygpid))
+        return NULL;
+
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid == 0) {
+        PyErr_Format(PyExc_ProcessLookupError,
+                     "process %d not found", cygpid);
+        return NULL;
+    }
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
+    if (hProcess == NULL) {
+        hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                               FALSE, winpid);
+        if (hProcess == NULL) {
+            psutil_PyErr_SetFromWindowsErr(0);
+            return NULL;
+        }
+    }
+
+    memset(&ioc, 0, sizeof(ioc));
+    if (!GetProcessIoCounters(hProcess, (IO_COUNTERS *)&ioc)) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        CloseHandle(hProcess);
+        return NULL;
+    }
+
+    CloseHandle(hProcess);
+
+    return Py_BuildValue("(KKKKKK)",
+                         ioc.ReadOperationCount,
+                         ioc.WriteOperationCount,
+                         ioc.ReadTransferCount,
+                         ioc.WriteTransferCount,
+                         ioc.OtherOperationCount,
+                         ioc.OtherTransferCount);
+}
+
+/* ===================================================================
+ * --- cpu_stats (via NtQuerySystemInformation)
+ * =================================================================== */
+
+typedef LONG (WINAPI *NtQuerySystemInformation_t)(
+    ULONG SystemInformationClass,
+    PVOID SystemInformation,
+    ULONG SystemInformationLength,
+    PULONG ReturnLength
+);
+
+/* SystemPerformanceInformation = 2 */
+#ifndef SystemPerformanceInformation
+#define SystemPerformanceInformation 2
+#endif
+
+/*
+ * Return (ctx_switches, syscalls) from Windows performance counters.
+ * These supplement /proc/stat which provides ctx_switches and interrupts
+ * but not syscalls.
+ */
+PyObject *
+psutil_cpu_stats_win32(PyObject *self, PyObject *args)
+{
+    NtQuerySystemInformation_t pNtQuery;
+    HMODULE hNtdll;
+    LONG status;
+    ULONG ctx_switches, syscalls;
+
+    hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "could not get ntdll.dll handle");
+        return NULL;
+    }
+
+    pNtQuery = (NtQuerySystemInformation_t)
+        GetProcAddress(hNtdll, "NtQuerySystemInformation");
+    if (pNtQuery == NULL) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "NtQuerySystemInformation not found");
+        return NULL;
+    }
+
+    /* SYSTEM_PERFORMANCE_INFORMATION is 376 bytes on 64-bit Windows.
+     * Offsets determined empirically (many LARGE_INTEGER fields precede
+     * the ULONG fields):
+     *   Offset 296: ContextSwitches (ULONG)
+     *   Offset 308: SystemCalls (ULONG)
+     */
+    unsigned char spibuf[384];
+    memset(spibuf, 0, sizeof(spibuf));
+    status = pNtQuery(SystemPerformanceInformation, spibuf, sizeof(spibuf), NULL);
+    if (status != 0) {
+        PyErr_Format(PyExc_OSError,
+                     "NtQuerySystemInformation(SystemPerformanceInformation) "
+                     "failed with status 0x%lx", (unsigned long)status);
+        return NULL;
+    }
+
+    memcpy(&ctx_switches, spibuf + 296, sizeof(ULONG));
+    memcpy(&syscalls, spibuf + 308, sizeof(ULONG));
+
+    return Py_BuildValue("(kk)",
+                         (unsigned long)ctx_switches,
+                         (unsigned long)syscalls);
+}

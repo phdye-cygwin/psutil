@@ -213,74 +213,82 @@ TCP_STATUSES = {
 
 
 def net_connections(kind='inet'):
-    """Return system-wide network connections using C extension.
+    """Return system-wide network connections via Win32 GetTcpTable/GetUdpTable.
 
-    FIXED: Issue #012 - Now properly converts raw tuples to namedtuples
+    Cygwin has no /proc/net/tcp. Uses iphlpapi.dll via ctypes.
     """
-    # Get raw connection tuples from C extension
-    # Format: (fd, family, type, laddr, raddr, status, pid)
-    try:
-        raw_connections = cext.net_connections(kind)
-    except (AttributeError, OSError):
-        # Return empty list if C extension fails
-        return []
+    import ctypes
+    from ctypes import byref
+    from ctypes import c_ulong
+    from struct import pack
+    from struct import unpack_from
 
-    # Convert raw tuples to proper namedtuples
+    from ._common import addr
+
     connections = []
-    for raw_conn in raw_connections:
-        try:
-            # Ensure we have the expected tuple format
-            if not isinstance(raw_conn, (tuple, list)) or len(raw_conn) != 7:
-                continue
+    want_tcp = kind in ('inet', 'inet4', 'tcp', 'tcp4', 'all')
+    want_udp = kind in ('inet', 'inet4', 'udp', 'udp4', 'all')
 
-            fd, family, type_, laddr, raddr, status, pid = raw_conn
+    try:
+        iphlpapi = ctypes.CDLL('iphlpapi.dll')
+    except OSError:
+        return connections
 
-            # Convert family and type to proper enums
-            try:
-                family = sockfam_to_enum(family)
-                type_ = socktype_to_enum(type_)
-            except (ValueError, KeyError):
-                # Skip connections with invalid family/type
-                continue
+    AF_INET = socket.AF_INET
 
-            # Convert addresses to proper format
-            # laddr and raddr are already tuples from C extension
-            if family in {socket.AF_INET, getattr(socket, 'AF_INET6', None)}:
-                if (
-                    laddr
-                    and isinstance(laddr, (tuple, list))
-                    and len(laddr) == 2
-                ):
-                    from ._common import addr
+    if want_tcp:
+        # GetExtendedTcpTable with TCP_TABLE_OWNER_PID_ALL (5)
+        size = c_ulong(0)
+        iphlpapi.GetExtendedTcpTable(None, byref(size), 0, 2, 5, 0)
+        if size.value > 0:
+            buf = ctypes.create_string_buffer(size.value)
+            ret = iphlpapi.GetExtendedTcpTable(buf, byref(size), 0, 2, 5, 0)
+            if ret == 0:
+                raw = buf.raw
+                num = unpack_from('<I', raw, 0)[0]
+                # MIB_TCPROW_OWNER_PID = 24 bytes each
+                # Ports are DWORDs with port in network byte order
+                for i in range(num):
+                    off = 4 + i * 24
+                    if off + 24 > len(raw):
+                        break
+                    state, la, lp_raw, ra, rp_raw, pid = unpack_from(
+                        '<IIIIII', raw, off)
+                    lp = socket.ntohs(lp_raw & 0xFFFF)
+                    rp = socket.ntohs(rp_raw & 0xFFFF)
+                    lip = socket.inet_ntoa(pack('<I', la))
+                    rip = socket.inet_ntoa(pack('<I', ra))
+                    laddr_t = addr(lip, lp)
+                    raddr_t = addr(rip, rp) if (ra or rp) else ()
+                    status = TCP_STATUSES.get(state, "NONE")
+                    conn = conn_to_ntuple(
+                        -1, AF_INET, socket.SOCK_STREAM,
+                        laddr_t, raddr_t, status, TCP_STATUSES, pid)
+                    connections.append(conn)
 
-                    laddr = addr(*laddr)
-                else:
-                    laddr = None
-
-                if (
-                    raddr
-                    and isinstance(raddr, (tuple, list))
-                    and len(raddr) == 2
-                ):
-                    from ._common import addr
-
-                    raddr = addr(*raddr)
-                else:
-                    raddr = None
-
-            # Convert status to string
-            if isinstance(status, int):
-                status = TCP_STATUSES.get(status, "NONE")
-
-            # Create proper namedtuple using conn_to_ntuple
-            conn = conn_to_ntuple(
-                fd, family, type_, laddr, raddr, status, TCP_STATUSES, pid
-            )
-            connections.append(conn)
-
-        except (ValueError, TypeError, AttributeError):
-            # Skip malformed connections but continue processing
-            continue
+    if want_udp:
+        # GetExtendedUdpTable with UDP_TABLE_OWNER_PID (1)
+        size = c_ulong(0)
+        iphlpapi.GetExtendedUdpTable(None, byref(size), 0, 2, 1, 0)
+        if size.value > 0:
+            buf = ctypes.create_string_buffer(size.value)
+            ret = iphlpapi.GetExtendedUdpTable(buf, byref(size), 0, 2, 1, 0)
+            if ret == 0:
+                raw = buf.raw
+                num = unpack_from('<I', raw, 0)[0]
+                # MIB_UDPROW_OWNER_PID = 12 bytes each
+                for i in range(num):
+                    off = 4 + i * 12
+                    if off + 12 > len(raw):
+                        break
+                    la, lp_raw, pid = unpack_from('<III', raw, off)
+                    lp = socket.ntohs(lp_raw & 0xFFFF)
+                    lip = socket.inet_ntoa(pack('<I', la))
+                    laddr_t = addr(lip, lp)
+                    conn = conn_to_ntuple(
+                        -1, AF_INET, socket.SOCK_DGRAM,
+                        laddr_t, (), "NONE", TCP_STATUSES, pid)
+                    connections.append(conn)
 
     return connections
 
@@ -713,24 +721,38 @@ def cpu_count_cores():
 
 
 def cpu_stats():
-    """Return CPU statistics from /proc/stat.
+    """Return CPU statistics from /proc/stat + Win32.
 
-    Cygwin's /proc/stat provides ctxt (context switches) and intr
-    (total interrupts). soft_interrupts and syscalls are not available
-    and are reported as 0.
+    /proc/stat provides interrupts. Win32 NtQuerySystemInformation
+    provides context switches and syscalls (more accurate than /proc
+    for these). soft_interrupts is not available on Cygwin.
     """
-    ctx_switches = 0
     interrupts = 0
     try:
         with open('/proc/stat', 'rb') as f:
             for line in f:
-                if line.startswith(b'ctxt '):
-                    ctx_switches = int(line.split()[1])
-                elif line.startswith(b'intr '):
+                if line.startswith(b'intr '):
                     interrupts = int(line.split()[1])
+                    break
     except (OSError, ValueError):
         pass
-    return scpustats(ctx_switches, interrupts, 0, 0)
+
+    ctx_switches = 0
+    syscalls = 0
+    try:
+        ctx_switches, syscalls = cext.cpu_stats_win32()
+    except (OSError, RuntimeError):
+        # Fall back to /proc/stat for ctx_switches
+        try:
+            with open('/proc/stat', 'rb') as f:
+                for line in f:
+                    if line.startswith(b'ctxt '):
+                        ctx_switches = int(line.split()[1])
+                        break
+        except (OSError, ValueError):
+            pass
+
+    return scpustats(ctx_switches, interrupts, 0, syscalls)
 
 
 def cpu_freq():
@@ -1111,13 +1133,27 @@ class Process:
 
     @wrap_exceptions
     def memory_info(self):
-        """Get process memory information using C extension with Windows API
-        alignment.
+        """Return process memory info.
 
-        UPDATED: Phase 3.3 - Issue #062 + Issue #052 Windows API alignment
-        Now properly aligned with psx.cc memory calculations.
+        RSS and VMS from Win32 GetProcessMemoryInfo (accurate).
+        shared/text/lib/data from /proc/[pid]/status (supplemental).
         """
-        return pmem(*cext.proc_memory_info(self.pid))
+        raw = list(cext.proc_memory_info(self.pid))
+        # raw = [rss, vms, shared, text, lib, data, dirty]
+        # Win32 path returns zeros for fields 2-6; fill from /proc
+        if raw[2] == 0 and raw[3] == 0:
+            try:
+                with open(f'/proc/{self.pid}/status', 'rb') as f:
+                    for line in f:
+                        if line.startswith(b'VmData:'):
+                            raw[5] = int(line.split()[1]) * 1024
+                        elif line.startswith(b'VmExe:'):
+                            raw[3] = int(line.split()[1]) * 1024
+                        elif line.startswith(b'VmLib:'):
+                            raw[4] = int(line.split()[1]) * 1024
+            except (OSError, ValueError):
+                pass
+        return pmem(*raw)
 
     @wrap_exceptions
     def memory_full_info(self):
@@ -1189,6 +1225,16 @@ class Process:
     def ionice_get(self):
         """Return I/O priority (0-4) via Win32 NtQueryInformationProcess."""
         return cext.proc_ionice_get(self.pid)
+
+    @wrap_exceptions
+    def ionice_set(self, ioclass, value=None):
+        """Set I/O priority via Win32 NtSetInformationProcess."""
+        if value is not None:
+            raise TypeError("value argument not accepted on Windows")
+        if ioclass not in (IOPRIO_VERYLOW, IOPRIO_LOW, IOPRIO_NORMAL,
+                           IOPRIO_HIGH):
+            raise ValueError(f"{ioclass!r} is not a valid priority")
+        cext.proc_ionice_set(self.pid, ioclass)
 
     @wrap_exceptions
     def cpu_affinity_get(self):
@@ -1338,14 +1384,16 @@ class Process:
 
     @wrap_exceptions
     def io_counters(self):
-        """Get I/O counters using C extension (Phase 4.1)."""
-        # C extension returns 7-tuple, but pio expects 4-tuple
-        # Format: (read_count, write_count, read_bytes, write_bytes,
-        #          read_chars, write_chars, cancelled_write_bytes)
-        io_data = cext.proc_io_counters(self.pid)
-        # Return standard psutil pio format:
-        # (read_count, write_count, read_bytes, write_bytes)
-        return pio(io_data[0], io_data[1], io_data[2], io_data[3])
+        """Return I/O counters via Win32 GetProcessIoCounters."""
+        # Win32 returns (read_count, write_count, read_bytes, write_bytes,
+        #                other_count, other_bytes)
+        try:
+            raw = cext.proc_io_counters_win32(self.pid)
+            return pio(raw[0], raw[1], raw[2], raw[3])
+        except (OSError, ProcessLookupError):
+            # Fallback to old C extension (may return zeros)
+            io_data = cext.proc_io_counters(self.pid)
+            return pio(io_data[0], io_data[1], io_data[2], io_data[3])
 
     @wrap_exceptions
     def memory_maps(self):

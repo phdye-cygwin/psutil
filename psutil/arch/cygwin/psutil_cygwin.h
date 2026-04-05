@@ -154,5 +154,8 @@ PyObject *psutil_proc_threads_win32(PyObject *self, PyObject *args);
 PyObject *psutil_proc_cpu_affinity_get_win32(PyObject *self, PyObject *args);
 PyObject *psutil_proc_cpu_affinity_set_win32(PyObject *self, PyObject *args);
 PyObject *psutil_proc_ionice_get_win32(PyObject *self, PyObject *args);
+PyObject *psutil_proc_ionice_set_win32(PyObject *self, PyObject *args);
+PyObject *psutil_proc_io_counters_win32(PyObject *self, PyObject *args);
+PyObject *psutil_cpu_stats_win32(PyObject *self, PyObject *args);
 
 #endif  // PSUTIL_CYGWIN_H

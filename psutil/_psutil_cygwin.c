@@ -208,6 +208,12 @@ static PyMethodDef mod_methods[] = {
      "Set process CPU affinity mask from list of CPU indices"},
     {"proc_ionice_get", psutil_proc_ionice_get_win32, METH_VARARGS,
      "Return I/O priority for a process (0-4)"},
+    {"proc_ionice_set", psutil_proc_ionice_set_win32, METH_VARARGS,
+     "Set I/O priority for a process (0-4)"},
+    {"proc_io_counters_win32", psutil_proc_io_counters_win32, METH_VARARGS,
+     "Return process I/O counters via GetProcessIoCounters"},
+    {"cpu_stats_win32", psutil_cpu_stats_win32, METH_VARARGS,
+     "Return (ctx_switches, syscalls) via NtQuerySystemInformation"},
 
     {NULL, NULL, 0, NULL}
 };
