@@ -1457,6 +1457,11 @@ class TestProcess(PsutilTestCase):
         p._ident = (p.pid, p.create_time() + 100)
 
         list(psutil.process_iter())
+        if CYGWIN and p.pid not in psutil._pmap:
+            # Cygwin /proc reads can transiently fail under load,
+            # causing process_iter to miss a new PID on the first scan.
+            time.sleep(0.2)
+            list(psutil.process_iter())
         assert p.pid in psutil._pmap
         assert not p.is_running()
 

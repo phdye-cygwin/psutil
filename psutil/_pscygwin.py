@@ -1167,17 +1167,23 @@ class Process:
         the process is genuinely dead — raise NoSuchProcess even if
         /proc/[pid]/ still has stale data.
         """
-        try:
-            return cext.proc_create_time_win32(self.pid)
-        except (OSError, ProcessLookupError):
-            # Win32 can't see this process. Is it alive?
+        for attempt in range(3):
             try:
-                os.kill(self.pid, 0)
-            except ProcessLookupError:
-                raise NoSuchProcess(self.pid, self._name)
-            except PermissionError:
-                pass  # alive but access denied — fall through to /proc
-            return cext.proc_create_time(self.pid)
+                return cext.proc_create_time_win32(self.pid)
+            except (OSError, ProcessLookupError):
+                try:
+                    os.kill(self.pid, 0)
+                except ProcessLookupError:
+                    if attempt < 2:
+                        # Both Win32 and POSIX transiently fail under
+                        # load. Retry with increasing delay.
+                        time.sleep(0.05 * (attempt + 1))
+                        continue
+                    raise NoSuchProcess(self.pid, self._name)
+                except PermissionError:
+                    pass  # alive but access denied
+                return cext.proc_create_time(self.pid)
+        raise NoSuchProcess(self.pid, self._name)
 
     @wrap_exceptions
     def memory_info(self):
