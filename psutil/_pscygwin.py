@@ -613,17 +613,21 @@ scputimes = scputimes_per_cpu
 
 
 def cpu_times():
-    """Return system-wide CPU times.
+    """Return system-wide CPU times in seconds.
 
     Uses the same 10-field namedtuple as per_cpu_times() for consistency.
-    Fields not available from /proc/stat are set to 0.0.
+    /proc/stat values are in jiffies (SC_CLK_TCK, typically 1000 Hz on
+    Cygwin) — divide to get seconds.
     """
+    try:
+        clk_tck = os.sysconf("SC_CLK_TCK")
+    except (AttributeError, ValueError):
+        clk_tck = 1000  # Cygwin default
     try:
         with open('/proc/stat', 'rb') as f:
             line = f.readline()
             if line.startswith(b'cpu '):
-                values = [float(x) for x in line.split()[1:]]
-                # Pad to 10 fields
+                values = [float(x) / clk_tck for x in line.split()[1:]]
                 while len(values) < 10:
                     values.append(0.0)
                 return scputimes(*values[:10])
@@ -1318,6 +1322,8 @@ class Process:
         getrlimit/setrlimit operate on the calling process only.
         """
         if self.pid != os.getpid():
+            if not _win32_pid_alive(self.pid):
+                raise NoSuchProcess(self.pid, self._name)
             raise AccessDenied(self.pid, self._name)
         if limits is None:
             return _resource.getrlimit(resource_)

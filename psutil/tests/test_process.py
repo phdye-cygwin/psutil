@@ -123,7 +123,8 @@ class TestProcess(PsutilTestCase):
             with pytest.raises(psutil.AccessDenied):
                 p.send_signal(sig)
 
-    @pytest.mark.skipif(CYGWIN, reason="Cygwin /proc persists for dead processes; some methods return stale data instead of NSP")
+    # Note: on Cygwin, some methods return stale /proc data for dead
+    # processes instead of raising NoSuchProcess (SUBFAILED subtests).
     def test_wait_exited(self):
         # Test waitpid() + WIFEXITED -> WEXITSTATUS.
         # normal return, same as exit(0)
@@ -177,7 +178,8 @@ class TestProcess(PsutilTestCase):
             assert p.wait() == signal.SIGTERM
             assert p.wait() == signal.SIGTERM
 
-    @pytest.mark.skipif(CYGWIN, reason="Cygwin /proc persists for dead processes; some methods return stale data instead of NSP")
+    # Note: on Cygwin, some methods return stale /proc data for dead
+    # processes instead of raising NoSuchProcess (SUBFAILED subtests).
     def test_wait_non_children(self):
         # Test wait() against a process which is not our direct
         # child.
@@ -211,7 +213,8 @@ class TestProcess(PsutilTestCase):
         with pytest.raises(ValueError):
             p.wait(-1)
 
-    @pytest.mark.skipif(CYGWIN, reason="Cygwin /proc persists for dead processes; some methods return stale data instead of NSP")
+    # Note: on Cygwin, some methods return stale /proc data for dead
+    # processes instead of raising NoSuchProcess (SUBFAILED subtests).
     def test_wait_timeout_nonblocking(self):
         p = self.spawn_psproc()
         with pytest.raises(psutil.TimeoutExpired):
