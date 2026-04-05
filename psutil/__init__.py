@@ -193,18 +193,22 @@ __all__ = [
 
 __all__.extend(_psplatform.__extra__all__)
 
-# Linux, FreeBSD
+# Linux, FreeBSD, Cygwin
 if hasattr(_psplatform.Process, "rlimit"):
     # Populate global namespace with RLIM* constants.
-    from . import _psutil_posix
+    # Cygwin doesn't build _psutil_posix; fall back to _psplatform.
+    try:
+        from . import _psutil_posix as _rlimit_src
+    except ImportError:
+        _rlimit_src = _psplatform
 
     _globals = globals()
     _name = None
-    for _name in dir(_psutil_posix):
+    for _name in dir(_rlimit_src):
         if _name.startswith('RLIM') and _name.isupper():
-            _globals[_name] = getattr(_psutil_posix, _name)
+            _globals[_name] = getattr(_rlimit_src, _name)
             __all__.append(_name)
-    del _globals, _name
+    del _globals, _name, _rlimit_src
 
 AF_LINK = _psplatform.AF_LINK
 

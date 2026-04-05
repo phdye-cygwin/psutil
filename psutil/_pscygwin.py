@@ -52,6 +52,19 @@ except ImportError as e:
         + str(e)
     ) from e
 
+# Export RLIMIT constants for __init__.py (it falls back to _psplatform
+# when _psutil_posix is unavailable).
+import resource as _resource
+
+RLIM_INFINITY = _resource.RLIM_INFINITY
+RLIMIT_AS = _resource.RLIMIT_AS
+RLIMIT_CORE = _resource.RLIMIT_CORE
+RLIMIT_CPU = _resource.RLIMIT_CPU
+RLIMIT_DATA = _resource.RLIMIT_DATA
+RLIMIT_FSIZE = _resource.RLIMIT_FSIZE
+RLIMIT_NOFILE = _resource.RLIMIT_NOFILE
+RLIMIT_STACK = _resource.RLIMIT_STACK
+
 __extra__all__ = []
 
 # =====================================================================
@@ -1135,6 +1148,20 @@ class Process:
     def nice_set(self, value):
         """Set process nice value using C extension."""
         return cext.setpriority(self.pid, value)
+
+    @wrap_exceptions
+    def rlimit(self, resource_, limits=None):
+        """Get or set process resource limits.
+
+        Cygwin only supports rlimit for the current process — POSIX
+        getrlimit/setrlimit operate on the calling process only.
+        """
+        if self.pid != os.getpid():
+            raise AccessDenied(self.pid, self._name)
+        if limits is None:
+            return _resource.getrlimit(resource_)
+        else:
+            _resource.setrlimit(resource_, limits)
 
     @wrap_exceptions
     def open_files(self):

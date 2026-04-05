@@ -300,3 +300,38 @@ class TestT8Terminal:
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):
             psutil.Process(999999).terminal()
+
+
+# ===================================================================
+# T9: Process.rlimit()
+# ===================================================================
+
+
+class TestT9Rlimit:
+    """Process.rlimit() via POSIX getrlimit/setrlimit."""
+
+    def test_get_nofile(self):
+        result = psutil.Process().rlimit(psutil.RLIMIT_NOFILE)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_values_are_ints(self):
+        soft, hard = psutil.Process().rlimit(psutil.RLIMIT_NOFILE)
+        assert isinstance(soft, int)
+        assert isinstance(hard, int)
+
+    def test_soft_le_hard(self):
+        soft, hard = psutil.Process().rlimit(psutil.RLIMIT_NOFILE)
+        assert soft <= hard
+
+    def test_other_pid_raises(self):
+        # rlimit only works for current process on Cygwin
+        for pid in psutil.pids():
+            if pid != os.getpid() and pid > 1:
+                with pytest.raises(psutil.AccessDenied):
+                    psutil.Process(pid).rlimit(psutil.RLIMIT_NOFILE)
+                break
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).rlimit(psutil.RLIMIT_NOFILE)
