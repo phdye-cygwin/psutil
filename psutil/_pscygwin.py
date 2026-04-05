@@ -380,9 +380,85 @@ def net_if_stats():
     return ret
 
 
-def net_io_counters(pernic=False):
-    """Return network I/O statistics."""
-    return _psposix.net_io_counters(pernic)
+def net_io_counters():
+    """Return network I/O counters via Win32 GetIfTable (iphlpapi.dll).
+
+    Returns a dict of {name: snetio} as __init__.py expects.
+    Uses ctypes to avoid WinSock header contamination in the C layer.
+    Field offsets determined empirically from Cygwin's MIB_IFROW struct.
+    """
+    import ctypes
+    from ctypes import byref
+    from ctypes import c_ulong
+    from struct import unpack_from
+
+    from ._common import snetio
+
+    try:
+        iphlpapi = ctypes.CDLL('iphlpapi.dll')
+    except OSError:
+        return {}
+
+    # Query required buffer size
+    size = c_ulong(0)
+    iphlpapi.GetIfTable(None, byref(size), 0)
+    if size.value == 0:
+        return {}
+
+    buf = ctypes.create_string_buffer(size.value)
+    ret = iphlpapi.GetIfTable(buf, byref(size), 0)
+    if ret != 0:
+        return {}
+
+    raw = buf.raw
+    num_entries = unpack_from('<I', raw, 0)[0]
+    ROW_SIZE = 860  # sizeof(MIB_IFROW) on this platform
+
+    # Field offsets within MIB_IFROW (from C offsetof)
+    OFF_IN_OCTETS = 552
+    OFF_IN_UCAST = 556
+    OFF_IN_NUCAST = 560
+    OFF_IN_DISCARDS = 564
+    OFF_IN_ERRORS = 568
+    OFF_OUT_OCTETS = 576
+    OFF_OUT_UCAST = 580
+    OFF_OUT_NUCAST = 584
+    OFF_OUT_DISCARDS = 588
+    OFF_OUT_ERRORS = 592
+    OFF_DESCR_LEN = 600
+    OFF_DESCR = 604
+
+    result = {}
+    for i in range(num_entries):
+        base = 4 + i * ROW_SIZE
+        if base + ROW_SIZE > len(raw):
+            break
+
+        descr_len = unpack_from('<I', raw, base + OFF_DESCR_LEN)[0]
+        if descr_len > 256:
+            descr_len = 256
+        name = raw[base + OFF_DESCR:base + OFF_DESCR + descr_len]
+        name = name.rstrip(b'\x00').decode('ascii', 'replace').strip()
+        if not name:
+            name = f"iface{i}"
+
+        bytes_recv = unpack_from('<I', raw, base + OFF_IN_OCTETS)[0]
+        bytes_sent = unpack_from('<I', raw, base + OFF_OUT_OCTETS)[0]
+        pkts_recv = (unpack_from('<I', raw, base + OFF_IN_UCAST)[0]
+                     + unpack_from('<I', raw, base + OFF_IN_NUCAST)[0])
+        pkts_sent = (unpack_from('<I', raw, base + OFF_OUT_UCAST)[0]
+                     + unpack_from('<I', raw, base + OFF_OUT_NUCAST)[0])
+        errin = unpack_from('<I', raw, base + OFF_IN_ERRORS)[0]
+        errout = unpack_from('<I', raw, base + OFF_OUT_ERRORS)[0]
+        dropin = unpack_from('<I', raw, base + OFF_IN_DISCARDS)[0]
+        dropout = unpack_from('<I', raw, base + OFF_OUT_DISCARDS)[0]
+
+        result[name] = snetio(
+            bytes_sent, bytes_recv, pkts_sent, pkts_recv,
+            errin, errout, dropin, dropout,
+        )
+
+    return result
 
 
 # =====================================================================

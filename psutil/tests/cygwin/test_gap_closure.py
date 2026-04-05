@@ -173,3 +173,37 @@ class TestT4NetIfStats:
         stats = psutil.net_if_stats()
         has_positive = any(s.mtu > 0 for s in stats.values())
         assert has_positive, "no interface has mtu > 0"
+
+
+# ===================================================================
+# T5: net_io_counters() — own implementation
+# ===================================================================
+
+
+class TestT5NetIoCounters:
+    """net_io_counters() must not delegate to _psposix."""
+
+    def test_returns_snetio(self):
+        result = psutil.net_io_counters()
+        assert result is not None
+        assert hasattr(result, 'bytes_sent')
+        assert hasattr(result, 'bytes_recv')
+
+    def test_values_non_negative(self):
+        result = psutil.net_io_counters()
+        assert result.bytes_sent >= 0
+        assert result.bytes_recv >= 0
+        assert result.packets_sent >= 0
+        assert result.packets_recv >= 0
+
+    def test_has_traffic(self):
+        result = psutil.net_io_counters()
+        assert result.bytes_sent + result.bytes_recv > 0
+
+    def test_pernic_returns_dict(self):
+        result = psutil.net_io_counters(pernic=True)
+        assert isinstance(result, dict)
+
+    def test_callable_twice(self):
+        psutil.net_io_counters()
+        psutil.net_io_counters()
