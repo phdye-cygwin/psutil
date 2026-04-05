@@ -135,6 +135,10 @@ elif AIX:
 
 elif CYGWIN:
     from . import _pscygwin as _psplatform
+    from ._pscygwin import IOPRIO_HIGH  # noqa: F401
+    from ._pscygwin import IOPRIO_LOW  # noqa: F401
+    from ._pscygwin import IOPRIO_NORMAL  # noqa: F401
+    from ._pscygwin import IOPRIO_VERYLOW  # noqa: F401
 
 else:  # pragma: no cover
     msg = f"platform {sys.platform} is not supported"

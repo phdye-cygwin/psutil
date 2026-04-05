@@ -380,3 +380,78 @@ psutil_proc_cpu_affinity_set_win32(PyObject *self, PyObject *args)
     CloseHandle(hProcess);
     Py_RETURN_NONE;
 }
+
+/* ===================================================================
+ * --- ionice (I/O priority via NtQueryInformationProcess)
+ * =================================================================== */
+
+typedef LONG (WINAPI *NtQueryInformationProcess_t)(
+    HANDLE ProcessHandle,
+    ULONG ProcessInformationClass,
+    PVOID ProcessInformation,
+    ULONG ProcessInformationLength,
+    PULONG ReturnLength
+);
+
+#ifndef ProcessIoPriority
+#define ProcessIoPriority 33
+#endif
+
+/*
+ * Return I/O priority for a process (0-4).
+ * Uses NtQueryInformationProcess from ntdll.dll.
+ */
+PyObject *
+psutil_proc_ionice_get_win32(PyObject *self, PyObject *args)
+{
+    pid_t cygpid;
+    DWORD winpid;
+    HANDLE hProcess;
+    ULONG io_priority = 0;
+    LONG status;
+    NtQueryInformationProcess_t pNtQuery;
+    HMODULE hNtdll;
+
+    if (!PyArg_ParseTuple(args, "i", &cygpid))
+        return NULL;
+
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid == 0) {
+        PyErr_Format(PyExc_ProcessLookupError,
+                     "process %d not found", cygpid);
+        return NULL;
+    }
+
+    hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll == NULL) {
+        PyErr_SetString(PyExc_RuntimeError, "could not get ntdll.dll handle");
+        return NULL;
+    }
+
+    pNtQuery = (NtQueryInformationProcess_t)
+        GetProcAddress(hNtdll, "NtQueryInformationProcess");
+    if (pNtQuery == NULL) {
+        PyErr_SetString(PyExc_RuntimeError,
+                        "NtQueryInformationProcess not found in ntdll.dll");
+        return NULL;
+    }
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
+    if (hProcess == NULL) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        return NULL;
+    }
+
+    status = pNtQuery(hProcess, ProcessIoPriority,
+                      &io_priority, sizeof(io_priority), NULL);
+    CloseHandle(hProcess);
+
+    if (status != 0) {
+        PyErr_Format(PyExc_OSError,
+                     "NtQueryInformationProcess(ProcessIoPriority) "
+                     "failed with status 0x%lx", (unsigned long)status);
+        return NULL;
+    }
+
+    return PyLong_FromUnsignedLong(io_priority);
+}

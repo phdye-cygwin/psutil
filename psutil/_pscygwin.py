@@ -65,7 +65,15 @@ RLIMIT_FSIZE = _resource.RLIMIT_FSIZE
 RLIMIT_NOFILE = _resource.RLIMIT_NOFILE
 RLIMIT_STACK = _resource.RLIMIT_STACK
 
-__extra__all__ = []
+# Windows I/O priority constants (same values as _pswindows.py)
+IOPRIO_VERYLOW = 0
+IOPRIO_LOW = 1
+IOPRIO_NORMAL = 2
+IOPRIO_HIGH = 3
+
+__extra__all__ = [
+    "IOPRIO_VERYLOW", "IOPRIO_LOW", "IOPRIO_NORMAL", "IOPRIO_HIGH",
+]
 
 # =====================================================================
 # --- namedtuples
@@ -1148,6 +1156,11 @@ class Process:
     def nice_set(self, value):
         """Set process nice value using C extension."""
         return cext.setpriority(self.pid, value)
+
+    @wrap_exceptions
+    def ionice_get(self):
+        """Return I/O priority (0-4) via Win32 NtQueryInformationProcess."""
+        return cext.proc_ionice_get(self.pid)
 
     @wrap_exceptions
     def cpu_affinity_get(self):

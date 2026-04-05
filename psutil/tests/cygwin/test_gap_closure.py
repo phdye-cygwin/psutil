@@ -368,3 +368,24 @@ class TestT10CpuAffinity:
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):
             psutil.Process(999999).cpu_affinity()
+
+
+# ===================================================================
+# T11: Process.ionice()
+# ===================================================================
+
+
+class TestT11Ionice:
+    """Process.ionice() via Win32 NtQueryInformationProcess."""
+
+    def test_get_returns_int(self):
+        result = psutil.Process().ionice()
+        assert isinstance(result, int)
+
+    def test_value_in_range(self):
+        result = psutil.Process().ionice()
+        assert 0 <= result <= 4, f"ionice={result} not in [0,4]"
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).ionice()
