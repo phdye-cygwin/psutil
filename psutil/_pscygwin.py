@@ -686,11 +686,24 @@ def cpu_count_cores():
 
 
 def cpu_stats():
-    """Return CPU statistics."""
-    # TODO: Implement C extension function for CPU statistics
-    # Return basic stats - this should be properly implemented for Cygwin
-    # Format: scpustats(ctx_switches, interrupts, soft_interrupts, syscalls)
-    return scpustats(0, 0, 0, 0)
+    """Return CPU statistics from /proc/stat.
+
+    Cygwin's /proc/stat provides ctxt (context switches) and intr
+    (total interrupts). soft_interrupts and syscalls are not available
+    and are reported as 0.
+    """
+    ctx_switches = 0
+    interrupts = 0
+    try:
+        with open('/proc/stat', 'rb') as f:
+            for line in f:
+                if line.startswith(b'ctxt '):
+                    ctx_switches = int(line.split()[1])
+                elif line.startswith(b'intr '):
+                    interrupts = int(line.split()[1])
+    except (OSError, ValueError):
+        pass
+    return scpustats(ctx_switches, interrupts, 0, 0)
 
 
 def cpu_freq():

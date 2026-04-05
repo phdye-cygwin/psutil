@@ -207,3 +207,36 @@ class TestT5NetIoCounters:
     def test_callable_twice(self):
         psutil.net_io_counters()
         psutil.net_io_counters()
+
+
+# ===================================================================
+# T6: cpu_stats() — parse /proc/stat
+# ===================================================================
+
+
+class TestT6CpuStats:
+    """cpu_stats() must return real data, not all zeros."""
+
+    def test_returns_scpustats(self):
+        result = psutil.cpu_stats()
+        assert hasattr(result, 'ctx_switches')
+        assert hasattr(result, 'interrupts')
+        assert hasattr(result, 'soft_interrupts')
+        assert hasattr(result, 'syscalls')
+
+    def test_ctx_switches_positive(self):
+        assert psutil.cpu_stats().ctx_switches > 0
+
+    def test_interrupts_non_negative(self):
+        assert psutil.cpu_stats().interrupts >= 0
+
+    def test_all_fields_are_int(self):
+        for field in psutil.cpu_stats()._fields:
+            val = getattr(psutil.cpu_stats(), field)
+            assert isinstance(val, int), (
+                f"{field} is {type(val).__name__}"
+            )
+
+    def test_not_all_zeros(self):
+        s = psutil.cpu_stats()
+        assert s.ctx_switches + s.interrupts > 0
