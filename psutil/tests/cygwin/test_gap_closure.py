@@ -396,6 +396,60 @@ class TestT11Ionice:
 # ===================================================================
 
 
+# ===================================================================
+# T13b: create_time() high resolution via Win32 GetProcessTimes
+# ===================================================================
+
+
+class TestT13bCreateTime:
+    """create_time() must have sub-second resolution for PID reuse detection."""
+
+    def test_has_fractional_part(self):
+        """At least some processes should have non-zero fractional seconds."""
+        p = psutil.Process()
+        ct = p.create_time()
+        # With Win32 GetProcessTimes we get 100ns resolution.
+        # Integer .0 means we're still using the old time_t path.
+        # Run multiple processes to increase chance of non-.0 fraction.
+        found_fractional = False
+        for pid in list(psutil.pids())[:50]:
+            try:
+                ct = psutil.Process(pid).create_time()
+                if ct % 1 != 0.0:
+                    found_fractional = True
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied,
+                    psutil.ZombieProcess):
+                continue
+        assert found_fractional, (
+            "No process has sub-second create_time — still using time_t?"
+        )
+
+    def test_current_process_positive(self):
+        ct = psutil.Process().create_time()
+        assert ct > 0
+
+    def test_two_rapid_spawns_differ(self):
+        """Two processes spawned back-to-back should have different create_times."""
+        c1 = subprocess.Popen(['sleep', '60'])
+        c2 = subprocess.Popen(['sleep', '60'])
+        try:
+            time.sleep(0.2)
+            ct1 = psutil.Process(c1.pid).create_time()
+            ct2 = psutil.Process(c2.pid).create_time()
+            # With 1-second resolution these would be equal.
+            # With 100ns resolution they should differ.
+            assert ct1 != ct2, (
+                f"Both processes have identical create_time {ct1} — "
+                f"resolution too low for PID reuse detection"
+            )
+        finally:
+            c1.terminate()
+            c2.terminate()
+            c1.wait(timeout=5)
+            c2.wait(timeout=5)
+
+
 class TestT12CpuNum:
     """Process.cpu_num() returns current CPU index."""
 

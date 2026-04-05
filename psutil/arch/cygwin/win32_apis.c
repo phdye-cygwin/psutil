@@ -56,6 +56,67 @@ psutil_PyErr_SetFromWindowsErr(DWORD err)
 }
 
 /* ===================================================================
+ * --- create_time (high resolution via GetProcessTimes)
+ * =================================================================== */
+
+/*
+ * Return process creation time as a float with ~100ns resolution.
+ * Cygwin's external_pinfo.start_time is time_t (1-second resolution),
+ * which is too coarse for PID reuse detection. Win32 FILETIME gives
+ * 100-nanosecond intervals since Jan 1, 1601 UTC.
+ */
+PyObject *
+psutil_proc_create_time_win32(PyObject *self, PyObject *args)
+{
+    pid_t cygpid;
+    DWORD winpid;
+    HANDLE hProcess;
+    FILETIME ftCreate, ftExit, ftKernel, ftUser;
+    ULARGE_INTEGER ul;
+    double unix_time;
+
+    /* FILETIME epoch (Jan 1, 1601) to Unix epoch (Jan 1, 1970)
+     * difference in 100ns intervals */
+    static const unsigned long long EPOCH_DIFF = 116444736000000000ULL;
+
+    if (!PyArg_ParseTuple(args, "i", &cygpid))
+        return NULL;
+
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid == 0) {
+        PyErr_Format(PyExc_ProcessLookupError,
+                     "process %d not found", cygpid);
+        return NULL;
+    }
+
+    hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
+    if (hProcess == NULL) {
+        /* Try with limited access */
+        hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION,
+                               FALSE, winpid);
+        if (hProcess == NULL) {
+            psutil_PyErr_SetFromWindowsErr(0);
+            return NULL;
+        }
+    }
+
+    if (!GetProcessTimes(hProcess, &ftCreate, &ftExit, &ftKernel, &ftUser)) {
+        psutil_PyErr_SetFromWindowsErr(0);
+        CloseHandle(hProcess);
+        return NULL;
+    }
+
+    CloseHandle(hProcess);
+
+    /* Convert FILETIME to Unix timestamp (seconds since 1970) */
+    ul.LowPart = ftCreate.dwLowDateTime;
+    ul.HighPart = ftCreate.dwHighDateTime;
+    unix_time = (double)(ul.QuadPart - EPOCH_DIFF) / 10000000.0;
+
+    return PyFloat_FromDouble(unix_time);
+}
+
+/* ===================================================================
  * --- cpu_freq (from arch/windows/cpu.c)
  * =================================================================== */
 

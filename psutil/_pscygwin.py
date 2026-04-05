@@ -1098,8 +1098,16 @@ class Process:
 
     @wrap_exceptions
     def create_time(self):
-        """Get process creation time using C extension (Phase 3.2)."""
-        return cext.proc_create_time(self.pid)
+        """Return process creation time with 100ns resolution.
+
+        Uses Win32 GetProcessTimes for sub-second precision, which is
+        critical for PID reuse detection. Falls back to Cygwin's
+        /proc-based time_t (1-second resolution) if Win32 call fails.
+        """
+        try:
+            return cext.proc_create_time_win32(self.pid)
+        except (OSError, ProcessLookupError):
+            return cext.proc_create_time(self.pid)
 
     @wrap_exceptions
     def memory_info(self):

@@ -147,6 +147,7 @@ void psutil_win32_cleanup(void);
 // --- Win32 API Functions (arch/cygwin/win32_apis.c)
 // =============================================================================
 
+PyObject *psutil_proc_create_time_win32(PyObject *self, PyObject *args);
 PyObject *psutil_cpu_freq_win32(PyObject *self, PyObject *args);
 PyObject *psutil_sensors_battery_win32(PyObject *self, PyObject *args);
 PyObject *psutil_proc_threads_win32(PyObject *self, PyObject *args);

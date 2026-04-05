@@ -194,6 +194,8 @@ static PyMethodDef mod_methods[] = {
      "Get disk I/O statistics"},
 
     // Win32 API functions (arch/cygwin/win32_apis.c)
+    {"proc_create_time_win32", psutil_proc_create_time_win32, METH_VARARGS,
+     "Return process creation time with 100ns resolution via GetProcessTimes"},
     {"cpu_freq", psutil_cpu_freq_win32, METH_VARARGS,
      "Return CPU frequency as (current_mhz, max_mhz)"},
     {"sensors_battery", psutil_sensors_battery_win32, METH_VARARGS,
