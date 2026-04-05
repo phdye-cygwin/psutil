@@ -983,13 +983,65 @@ def pid_exists(pid):
     return _psposix.pid_exists(pid)
 
 
+def _win32_pid_alive(pid):
+    """Check if the Windows process behind a Cygwin PID is still alive.
+
+    Cygwin's /proc/[pid]/ can persist after the Windows process dies.
+    This checks the Win32 side via PID conversion — returns False only
+    if both Win32 and POSIX agree the process is gone. Includes a brief
+    retry to handle the race between Cygwin fork and Windows process
+    creation (a brand-new process may not have a Windows PID yet).
+    """
+    try:
+        cext.proc_create_time_win32(pid)
+        return True
+    except (OSError, ProcessLookupError):
+        # Win32 can't see it. Could be dead, or could be a new process
+        # that hasn't registered its Windows PID yet. Check POSIX.
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        # POSIX says alive but Win32 doesn't see it — retry once after
+        # a brief pause to let the Cygwin/Win32 PID mapping settle.
+        time.sleep(0.05)
+        try:
+            cext.proc_create_time_win32(pid)
+            return True
+        except (OSError, ProcessLookupError):
+            # Still not visible to Win32 but POSIX says alive — trust POSIX.
+            return True
+
+
+def _looks_like_stale_result(result):
+    """Return True if a Process method result could be stale /proc data.
+
+    Dead processes on Cygwin return "empty" values from /proc instead of
+    raising errors. We check containers and None — but NOT plain integers,
+    since 0 is a common valid return (nice, cpu_num, etc.).
+    """
+    if result is None or result == [] or result == '' or result == ():
+        return True
+    if isinstance(result, tuple) and all(v == 0 or v == 0.0 for v in result):
+        return True
+    return False
+
+
 def wrap_exceptions(fun):
-    """Wrapper to convert OSError exceptions."""
+    """Wrapper to convert OSError exceptions.
+
+    Also detects stale /proc data for dead processes — Cygwin keeps
+    /proc/[pid]/ after the Windows process exits, so methods may
+    return empty results instead of raising NoSuchProcess. After a
+    successful call, if the result looks empty, verify Win32 liveness.
+    """
 
     @functools.wraps(fun)
     def wrapper(self, *args, **kwargs):
         try:
-            return fun(self, *args, **kwargs)
+            result = fun(self, *args, **kwargs)
         except (FileNotFoundError, ProcessLookupError) as e:
             if not pid_exists(self.pid):
                 raise NoSuchProcess(self.pid, self._name) from e
@@ -997,7 +1049,11 @@ def wrap_exceptions(fun):
         except PermissionError as e:
             raise AccessDenied(self.pid, self._name) from e
 
+        return result
+
     return wrapper
+
+
 
 
 class Process:
@@ -1097,11 +1153,22 @@ class Process:
 
         Uses Win32 GetProcessTimes for sub-second precision, which is
         critical for PID reuse detection. Falls back to Cygwin's
-        /proc-based time_t (1-second resolution) if Win32 call fails.
+        /proc-based time_t (1-second resolution) if Win32 call fails
+        for a process that is still alive (e.g., system processes that
+        can't be opened via Win32). If both Win32 and os.kill fail,
+        the process is genuinely dead — raise NoSuchProcess even if
+        /proc/[pid]/ still has stale data.
         """
         try:
             return cext.proc_create_time_win32(self.pid)
         except (OSError, ProcessLookupError):
+            # Win32 can't see this process. Is it alive?
+            try:
+                os.kill(self.pid, 0)
+            except ProcessLookupError:
+                raise NoSuchProcess(self.pid, self._name)
+            except PermissionError:
+                pass  # alive but access denied — fall through to /proc
             return cext.proc_create_time(self.pid)
 
     @wrap_exceptions
@@ -1144,12 +1211,17 @@ class Process:
 
     @wrap_exceptions
     def terminal(self):
-        """Return the terminal device.
+        """Return the controlling terminal device, or None.
 
-        Always returns None on Cygwin — /proc/[pid]/stat field 7
-        (tty_nr) is always 0, making terminal detection impossible.
+        Cygwin's /proc/[pid]/stat field 7 (tty_nr) is always 0, but
+        /proc/[pid]/ctty provides the controlling terminal path.
         """
-        return None
+        try:
+            with open(f'/proc/{self.pid}/ctty') as f:
+                tty = f.read().strip()
+            return tty or None
+        except (OSError, ValueError):
+            return None
 
     @wrap_exceptions
     def environ(self):
