@@ -150,6 +150,22 @@ HAS_NET_IO_COUNTERS = True
 HAS_THREADS = True
 AF_LINK = None  # Not available on Cygwin
 
+# Process status mapping from C extension integer codes to psutil constants.
+# These codes are defined in arch/cygwin/proc.c psutil_proc_status():
+#   0 = running, 1 = sleeping (TTY I/O wait), 5 = stopped, 8 = zombie/exited
+from ._common import STATUS_DEAD
+from ._common import STATUS_RUNNING
+from ._common import STATUS_SLEEPING
+from ._common import STATUS_STOPPED
+from ._common import STATUS_ZOMBIE
+
+PROC_STATUSES = {
+    0: STATUS_RUNNING,
+    1: STATUS_SLEEPING,
+    5: STATUS_STOPPED,
+    8: STATUS_ZOMBIE,
+}
+
 # Connection status mapping from Windows constants to psutil constants
 TCP_STATUSES = {
     1: "ESTABLISHED",
@@ -906,8 +922,9 @@ class Process:
 
     @wrap_exceptions
     def status(self):
-        """Get process status using C extension (Phase 3.2)."""
-        return cext.proc_status(self.pid)
+        """Return process status as a STATUS_* string."""
+        code = cext.proc_status(self.pid)
+        return PROC_STATUSES.get(code, '?')
 
     @wrap_exceptions
     def uids(self):
