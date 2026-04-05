@@ -1032,10 +1032,9 @@ def _looks_like_stale_result(result):
 def wrap_exceptions(fun):
     """Wrapper to convert OSError exceptions.
 
-    Also detects stale /proc data for dead processes — Cygwin keeps
-    /proc/[pid]/ after the Windows process exits, so methods may
-    return empty results instead of raising NoSuchProcess. After a
-    successful call, if the result looks empty, verify Win32 liveness.
+    Includes a retry for transient /proc failures — Cygwin's /proc
+    can return ENOENT for live processes under load. Without the
+    retry, these get misdiagnosed as ZombieProcess.
     """
 
     @functools.wraps(fun)
@@ -1045,7 +1044,16 @@ def wrap_exceptions(fun):
         except (FileNotFoundError, ProcessLookupError) as e:
             if not pid_exists(self.pid):
                 raise NoSuchProcess(self.pid, self._name) from e
-            raise ZombieProcess(self.pid, self._name, self._ppid) from e
+            # Cygwin /proc reads can transiently fail under load.
+            # Retry once before concluding zombie.
+            time.sleep(0.05)
+            try:
+                result = fun(self, *args, **kwargs)
+            except (FileNotFoundError, ProcessLookupError) as e2:
+                if not pid_exists(self.pid):
+                    raise NoSuchProcess(self.pid, self._name) from e2
+                raise ZombieProcess(
+                    self.pid, self._name, self._ppid) from e2
         except PermissionError as e:
             raise AccessDenied(self.pid, self._name) from e
 
