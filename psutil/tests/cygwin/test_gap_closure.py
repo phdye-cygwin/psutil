@@ -389,3 +389,24 @@ class TestT11Ionice:
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):
             psutil.Process(999999).ionice()
+
+
+# ===================================================================
+# T12: Process.cpu_num()
+# ===================================================================
+
+
+class TestT12CpuNum:
+    """Process.cpu_num() returns current CPU index."""
+
+    def test_returns_int(self):
+        result = psutil.Process().cpu_num()
+        assert isinstance(result, int)
+
+    def test_valid_range(self):
+        n = psutil.Process().cpu_num()
+        assert 0 <= n < psutil.cpu_count()
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).cpu_num()

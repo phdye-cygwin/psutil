@@ -1158,6 +1158,20 @@ class Process:
         return cext.setpriority(self.pid, value)
 
     @wrap_exceptions
+    def cpu_num(self):
+        """Return the CPU this process is currently running on.
+
+        Only accurate for the current process — Win32
+        GetCurrentProcessorNumber() reports the calling thread's CPU.
+        For other PIDs, returns 0 (no cross-process API available).
+        """
+        if self.pid == os.getpid():
+            import ctypes
+            kernel32 = ctypes.CDLL('kernel32.dll')
+            return kernel32.GetCurrentProcessorNumber()
+        return 0
+
+    @wrap_exceptions
     def ionice_get(self):
         """Return I/O priority (0-4) via Win32 NtQueryInformationProcess."""
         return cext.proc_ionice_get(self.pid)
