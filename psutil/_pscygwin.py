@@ -1113,12 +1113,8 @@ class Process:
 
     @wrap_exceptions
     def num_threads(self):
-        """Get number of threads using C extension (Phase 3.3).
-
-        UPDATED: Phase 3.3 - Issue #062
-        Removed unnecessary fallback logic - C extension handles errors.
-        """
-        return cext.proc_num_threads(self.pid)
+        """Return number of threads via Win32 thread snapshot."""
+        return len(cext.proc_threads(self.pid))
 
     @wrap_exceptions
     def threads(self):

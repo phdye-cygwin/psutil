@@ -109,3 +109,33 @@ class TestT2MemoryPercent:
     def test_memory_percent_memtype_vms(self):
         result = psutil.Process().memory_percent(memtype='vms')
         assert isinstance(result, float)
+
+
+# ===================================================================
+# T3: Process.num_threads() returns >= 1
+# ===================================================================
+
+
+class TestT3NumThreads:
+    """num_threads() must return a positive int, not 0."""
+
+    def test_current_process_positive(self):
+        assert psutil.Process().num_threads() >= 1
+
+    def test_matches_threads_len(self):
+        p = psutil.Process()
+        assert p.num_threads() == len(p.threads())
+
+    def test_child_process(self):
+        child = subprocess.Popen(['sleep', '60'])
+        try:
+            time.sleep(0.3)
+            p = psutil.Process(child.pid)
+            assert p.num_threads() >= 1
+        finally:
+            child.terminate()
+            child.wait(timeout=5)
+
+    def test_nonexistent_pid(self):
+        with pytest.raises(psutil.NoSuchProcess):
+            psutil.Process(999999).num_threads()
