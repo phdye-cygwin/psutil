@@ -61,13 +61,15 @@ static int memory_debug = 0;
 static DWORD
 get_windows_pid_from_cygwin_pid(pid_t cygwin_pid)
 {
-    // Use cygwin_internal to convert PID
     DWORD winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygwin_pid);
 
     MEM_DEBUG_PRINT("Converted Cygwin PID %d to Windows PID %u", cygwin_pid, winpid);
 
     if (winpid == 0) {
-        MEM_DEBUG_PRINT("Failed to convert PID %d - process may not exist", cygwin_pid);
+        // Transient failure — retry after 50ms
+        usleep(50000);
+        winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygwin_pid);
+        MEM_DEBUG_PRINT("Retry: Cygwin PID %d to Windows PID %u", cygwin_pid, winpid);
     }
 
     return winpid;

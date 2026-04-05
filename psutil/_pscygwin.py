@@ -1348,8 +1348,7 @@ class Process:
         # for process connections
         try:
             raw_connections = cext.proc_net_connections(self.pid, kind)
-        except (AttributeError, OSError):
-            # Return empty list if C extension fails or process doesn't exist
+        except AttributeError:
             return []
 
         # Convert raw tuples to proper namedtuples

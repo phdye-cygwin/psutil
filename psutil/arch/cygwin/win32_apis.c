@@ -55,6 +55,30 @@ psutil_PyErr_SetFromWindowsErr(DWORD err)
     PyErr_Format(PyExc_OSError, "Windows error %lu", (unsigned long)err);
 }
 
+/*
+ * Convert Cygwin PID to Windows PID with retry.
+ * cygwin_internal(CW_CYGWIN_PID_TO_WINPID) can transiently return 0
+ * under load (race between Cygwin fork and Windows process creation).
+ * Retries once after 50ms. Sets ProcessLookupError on final failure.
+ */
+static DWORD
+psutil_cygwin_to_winpid(pid_t cygpid)
+{
+    DWORD winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid != 0)
+        return winpid;
+
+    /* Transient failure — retry after brief delay */
+    usleep(50000);  /* 50ms */
+    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    if (winpid != 0)
+        return winpid;
+
+    PyErr_Format(PyExc_ProcessLookupError,
+                 "process %d not found", cygpid);
+    return 0;
+}
+
 /* ===================================================================
  * --- create_time (high resolution via GetProcessTimes)
  * =================================================================== */
@@ -82,12 +106,9 @@ psutil_proc_create_time_win32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "i", &cygpid))
         return NULL;
 
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
-    if (winpid == 0) {
-        PyErr_Format(PyExc_ProcessLookupError,
-                     "process %d not found", cygpid);
+    winpid = psutil_cygwin_to_winpid(cygpid);
+    if (winpid == 0)
         return NULL;
-    }
 
     hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
     if (hProcess == NULL) {
@@ -242,12 +263,12 @@ psutil_proc_threads_win32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "i", &cygpid))
         goto error;
 
-    /* Convert Cygwin PID to Windows PID */
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
+    /* Convert Cygwin PID to Windows PID (with retry) */
+    winpid = psutil_cygwin_to_winpid(cygpid);
     if (winpid == 0) {
-        /* PID conversion failed — process may not exist or may be
-         * a pure-Cygwin process without a Windows counterpart.
-         * Fall back: return empty list so Python layer can handle it. */
+        /* PID conversion failed after retry — return empty list so
+         * Python layer can handle it. Clear the error set by helper. */
+        PyErr_Clear();
         return py_retlist;
     }
 
@@ -336,12 +357,9 @@ psutil_proc_cpu_affinity_get_win32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "i", &cygpid))
         return NULL;
 
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
-    if (winpid == 0) {
-        PyErr_Format(PyExc_ProcessLookupError,
-                     "process %d not found", cygpid);
+    winpid = psutil_cygwin_to_winpid(cygpid);
+    if (winpid == 0)
         return NULL;
-    }
 
     hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
     if (hProcess == NULL) {
@@ -419,12 +437,9 @@ psutil_proc_cpu_affinity_set_win32(PyObject *self, PyObject *args)
         mask |= ((DWORD_PTR)1 << cpu);
     }
 
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
-    if (winpid == 0) {
-        PyErr_Format(PyExc_ProcessLookupError,
-                     "process %d not found", cygpid);
+    winpid = psutil_cygwin_to_winpid(cygpid);
+    if (winpid == 0)
         return NULL;
-    }
 
     hProcess = OpenProcess(PROCESS_SET_INFORMATION, FALSE, winpid);
     if (hProcess == NULL) {
@@ -476,12 +491,9 @@ psutil_proc_ionice_get_win32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "i", &cygpid))
         return NULL;
 
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
-    if (winpid == 0) {
-        PyErr_Format(PyExc_ProcessLookupError,
-                     "process %d not found", cygpid);
+    winpid = psutil_cygwin_to_winpid(cygpid);
+    if (winpid == 0)
         return NULL;
-    }
 
     hNtdll = GetModuleHandleA("ntdll.dll");
     if (hNtdll == NULL) {
@@ -548,12 +560,9 @@ psutil_proc_ionice_set_win32(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
-    if (winpid == 0) {
-        PyErr_Format(PyExc_ProcessLookupError,
-                     "process %d not found", cygpid);
+    winpid = psutil_cygwin_to_winpid(cygpid);
+    if (winpid == 0)
         return NULL;
-    }
 
     hNtdll = GetModuleHandleA("ntdll.dll");
     if (hNtdll == NULL) {
@@ -618,12 +627,9 @@ psutil_proc_io_counters_win32(PyObject *self, PyObject *args)
     if (!PyArg_ParseTuple(args, "i", &cygpid))
         return NULL;
 
-    winpid = (DWORD)cygwin_internal(CW_CYGWIN_PID_TO_WINPID, cygpid);
-    if (winpid == 0) {
-        PyErr_Format(PyExc_ProcessLookupError,
-                     "process %d not found", cygpid);
+    winpid = psutil_cygwin_to_winpid(cygpid);
+    if (winpid == 0)
         return NULL;
-    }
 
     hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, winpid);
     if (hProcess == NULL) {
