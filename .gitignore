@@ -1,21 +1,54 @@
-syntax: glob
-*.al
-*.bak
-*.egg-info
-*.la
-*.lo
+# Build artifacts
 *.o
-*.orig
-*.pyc
-*.pyd
-*.rej
 *.so
-*.swp
-.failed-tests.txt
-.cache/
-.idea/
-.tox/
+*.pyd
+*.dll
+*.egg-info/
+*.pyc
+__pycache__/
 build/
 dist/
 wheelhouse/
 .tests/
+
+# Editor / IDE
+*.bak
+*.orig
+*.rej
+*.swp
+*~
+.cache/
+.idea/
+.tox/
+
+# Test / debug
+*.bkp
+.failed-tests.txt
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.debug
+
+# Cygwin build output (older Python)
+psutil/_psutil_cygwin.cpython-*-cygwin.dll
+
+# Log output from daemon builds
+log/
+
+# Private — not part of upstream
+a/
+ai/
+issue/
+CLAUDE.md
+.claude/
+
+# Misc private/scratch files
+.add
+.re
+.test-fixed
+.files
+.status
+.test
+.usual
+.dprint.jsonc

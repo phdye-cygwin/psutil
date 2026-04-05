@@ -1,0 +1,27 @@
+# LF in repo for all text; platform-appropriate on checkout
+* text=auto eol=lf
+*.py   text eol=lf
+*.c    text eol=lf
+*.h    text eol=lf
+*.rst  text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.sh   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.cfg  text eol=lf
+*.txt  text eol=lf
+*.in   text eol=lf
+# Windows scripts: CRLF required
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+# Binaries: no conversion
+*.so   binary
+*.pyd  binary
+*.dll  binary
+*.exe  binary
+*.pyc  binary
+*.png  binary
+*.ico  binary

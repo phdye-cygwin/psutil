@@ -50,6 +50,7 @@ from ._common import CONN_NONE
 from ._common import CONN_SYN_RECV
 from ._common import CONN_SYN_SENT
 from ._common import CONN_TIME_WAIT
+from ._common import CYGWIN
 from ._common import FREEBSD
 from ._common import LINUX
 from ._common import MACOS
@@ -132,6 +133,9 @@ elif AIX:
     # via sys.modules.
     PROCFS_PATH = "/proc"
 
+elif CYGWIN:
+    from . import _pscygwin as _psplatform
+
 else:  # pragma: no cover
     msg = f"platform {sys.platform} is not supported"
     raise NotImplementedError(msg)
@@ -163,7 +167,7 @@ __all__ = [
     "POWER_TIME_UNKNOWN", "POWER_TIME_UNLIMITED",
 
     "BSD", "FREEBSD", "LINUX", "NETBSD", "OPENBSD", "MACOS", "OSX", "POSIX",
-    "SUNOS", "WINDOWS", "AIX",
+    "SUNOS", "WINDOWS", "AIX", "CYGWIN",
 
     # "RLIM_INFINITY", "RLIMIT_AS", "RLIMIT_CORE", "RLIMIT_CPU", "RLIMIT_DATA",
     # "RLIMIT_FSIZE", "RLIMIT_LOCKS", "RLIMIT_MEMLOCK", "RLIMIT_NOFILE",
@@ -257,7 +261,7 @@ else:  # pragma: no cover
         for pid in pids():
             try:
                 ret[pid] = _psplatform.Process(pid).ppid()
-            except (NoSuchProcess, ZombieProcess):
+            except (NoSuchProcess, ZombieProcess, AccessDenied):
                 pass
         return ret
 

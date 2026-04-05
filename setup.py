@@ -69,6 +69,13 @@ from _common import SUNOS  # noqa: E402
 from _common import WINDOWS  # noqa: E402
 from _common import hilite  # noqa: E402
 
+# Add Cygwin detection - must be after _common imports
+CYGWIN = (
+    sys.platform.startswith("cygwin")
+    or 'CYGWIN' in os.environ.get('PATH', '').upper()
+    or os.path.exists('/proc/cygdrive')
+)
+
 PYPY = '__pypy__' in sys.builtin_module_names
 PY36_PLUS = sys.version_info[:2] >= (3, 6)
 PY37_PLUS = sys.version_info[:2] >= (3, 7)
@@ -119,6 +126,8 @@ if POSIX:
     macros.append(("PSUTIL_POSIX", 1))
 if BSD:
     macros.append(("PSUTIL_BSD", 1))
+if CYGWIN:
+    macros.append(("PSUTIL_CYGWIN", 1))
 
 # Needed to determine _Py_PARSE_PID in case it's missing (PyPy).
 # Taken from Lib/test/test_fcntl.py.
@@ -130,7 +139,10 @@ else:
 
 
 sources = ['psutil/arch/all/init.c']
-if POSIX:
+
+# Cygwin hybrid approach: Include POSIX sources for Cygwin with isolation
+# This allows Cygwin to access both POSIX and Windows APIs as needed
+if POSIX and not CYGWIN:
     sources.append('psutil/_psutil_posix.c')
     sources.extend(glob.glob("psutil/arch/posix/*.c"))
 
@@ -222,6 +234,11 @@ def get_sysdeps():
         return "pkgin install gcc python3"
     elif SUNOS:
         return "pkg install gcc"
+    elif CYGWIN:
+        return (
+            "Install gcc-core, gcc-g++, python3-devel packages "
+            "via Cygwin setup"
+        )
 
 
 def print_install_instructions():
@@ -313,6 +330,34 @@ if WINDOWS:
         ],
         # extra_compile_args=["/W 4"],
         # extra_link_args=["/DEBUG"],
+        # fmt: off
+        # python 2.7 compatibility requires no comma
+        **py_limited_api
+        # fmt: on
+    )
+
+elif CYGWIN:
+    # Cygwin C extension using consistent POSIX socket APIs
+    # Removed WinSock dependencies to work with Cygwin's POSIX socket layer
+    macros.append(("PSUTIL_CYGWIN", 1))
+
+    # Build Cygwin sources with POSIX socket implementation
+    # No Windows networking libraries needed - using pure POSIX approach
+    ext = Extension(
+        'psutil._psutil_cygwin',
+        sources=(
+            sources  # Contains 'psutil/arch/all/init.c'
+            # Main module with Python bindings and function routing
+            + ["psutil/_psutil_cygwin.c"]
+            # All Cygwin-specific files now in arch/cygwin/
+            + glob.glob("psutil/arch/cygwin/*.c")
+        ),
+        define_macros=macros,
+        libraries=[
+            # No Windows libraries - using POSIX sockets consistently
+        ],
+        # Enable C99 mode for better compatibility
+        extra_compile_args=["-std=gnu99"],
         # fmt: off
         # python 2.7 compatibility requires no comma
         **py_limited_api
@@ -456,7 +501,9 @@ else:
     sys.exit("platform {} is not supported".format(sys.platform))
 
 
-if POSIX:
+# Cygwin hybrid approach: Don't build separate POSIX extension for Cygwin
+# Cygwin includes POSIX sources directly in its own extension for isolation
+if POSIX and not CYGWIN:
     posix_extension = Extension(
         'psutil._psutil_posix',
         define_macros=macros,

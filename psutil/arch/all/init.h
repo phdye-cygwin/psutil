@@ -20,6 +20,8 @@
 
 #if defined(PSUTIL_LINUX)
     #include "../../arch/linux/init.h"
+#elif defined(PSUTIL_CYGWIN)
+    #include "../../arch/cygwin/init.h"
 #elif defined(PSUTIL_WINDOWS)
     #include "../../arch/windows/init.h"
 #elif defined(PSUTIL_OSX)
