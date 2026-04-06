@@ -16,6 +16,7 @@ from socket import SOCK_DGRAM
 from socket import SOCK_STREAM
 
 import psutil
+from psutil import CYGWIN
 from psutil import FREEBSD
 from psutil import LINUX
 from psutil import MACOS
@@ -179,6 +180,7 @@ class TestUnconnectedSockets(ConnectionTestCase):
             assert conn.status == psutil.CONN_NONE
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
+    @pytest.mark.skipif(CYGWIN, reason="UNIX socket enumeration unsupported")
     def test_unix_tcp(self):
         testfn = self.get_testfn()
         with closing(bind_unix_socket(testfn, type=SOCK_STREAM)) as sock:
@@ -187,6 +189,7 @@ class TestUnconnectedSockets(ConnectionTestCase):
             assert conn.status == psutil.CONN_NONE
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
+    @pytest.mark.skipif(CYGWIN, reason="UNIX socket enumeration unsupported")
     def test_unix_udp(self):
         testfn = self.get_testfn()
         with closing(bind_unix_socket(testfn, type=SOCK_STREAM)) as sock:
@@ -224,6 +227,7 @@ class TestConnectedSocket(ConnectionTestCase):
             client.close()
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
+    @pytest.mark.skipif(CYGWIN, reason="UNIX SOCK_STREAM connect blocks")
     def test_unix(self):
         testfn = self.get_testfn()
         server, client = unix_socketpair(testfn)
