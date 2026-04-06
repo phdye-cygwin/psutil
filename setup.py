@@ -358,6 +358,10 @@ elif CYGWIN:
         ],
         # Enable C99 mode for better compatibility
         extra_compile_args=["-std=gnu99"],
+        # Set a high image base to prevent fork() address space collisions.
+        # Without this, mass subprocess spawning (e.g., test suites) causes
+        # child_info_fork::abort when the DLL address is already occupied.
+        extra_link_args=["-Wl,--image-base,0x6F0000000"],
         # fmt: off
         # python 2.7 compatibility requires no comma
         **py_limited_api

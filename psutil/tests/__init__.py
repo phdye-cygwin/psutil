@@ -2028,10 +2028,23 @@ if POSIX:
         shutil.copyfile(src, dst)
         if CYGWIN:
             os.chmod(dst, 0o755)
+            # Rebase to a high address so fork() doesn't collide
+            # with other allocations when later tests spawn children.
+            subprocess.run(
+                ['rebase', '-b', '0x6F0000000', dst],
+                capture_output=True)
         try:
-            ctypes.CDLL(dst)
+            lib = ctypes.CDLL(dst)
             yield dst
         finally:
+            # On Cygwin, we must explicitly close the DLL handle
+            # before deleting, otherwise fork() fails with
+            # "unable to create interim mapping" because the file
+            # is still memory-mapped but deleted from disk.
+            if CYGWIN and lib._handle:
+                ctypes.cdll.LoadLibrary  # ensure cdll exists
+                import _ctypes
+                _ctypes.dlclose(lib._handle)
             safe_rmpath(dst)
 
 else:
