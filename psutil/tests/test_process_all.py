@@ -19,6 +19,7 @@ import traceback
 import psutil
 from psutil import AIX
 from psutil import BSD
+from psutil import CYGWIN
 from psutil import FREEBSD
 from psutil import LINUX
 from psutil import MACOS
@@ -241,12 +242,12 @@ class TestFetchAllProcesses(PsutilTestCase):
                 assert field >= 0
 
     def ionice(self, ret, info):
-        if LINUX:
+        if LINUX or CYGWIN:
             assert isinstance(ret.ioclass, int)
             assert isinstance(ret.value, int)
             assert ret.ioclass >= 0
             assert ret.value >= 0
-        else:  # Windows, Cygwin
+        else:  # Windows
             choices = [
                 psutil.IOPRIO_VERYLOW,
                 psutil.IOPRIO_LOW,
