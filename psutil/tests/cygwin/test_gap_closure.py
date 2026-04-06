@@ -57,6 +57,15 @@ class TestT1ProcessStatus:
         result = current.status()
         assert result in (STATUS_RUNNING, STATUS_SLEEPING)
 
+    def test_status_letter_mapping_complete(self):
+        """Every /proc/[pid]/stat letter has a mapping."""
+        from psutil._pscygwin import PROC_STATUSES_LETTER
+        # All letters Linux uses must be mapped
+        for letter in ('R', 'S', 'D', 'T', 'Z', 'X', 'x'):
+            assert letter in PROC_STATUSES_LETTER, (
+                f"letter {letter!r} missing from PROC_STATUSES_LETTER"
+            )
+
     def test_stopped_process(self):
         """A stopped process should report STATUS_STOPPED."""
         child = subprocess.Popen(['sleep', '60'])

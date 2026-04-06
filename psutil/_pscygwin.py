@@ -4,19 +4,11 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-"""Cygwin platform implementation using C extension.
+"""Cygwin platform implementation.
 
-Phase 3.3 Update - Issue #062: Updated to properly use C extension functions
-Removes unnecessary Python fallbacks and directly uses C implementations.
-
-FIXED: Issue #012 - Network connections now properly return namedtuples
-FIXED: Issue #052 - Memory metrics aligned with psx.cc using Windows APIs
-FIXED: Issue posix/002 - Disk partitions return proper namedtuples,\
-    VSZ memory test aligned
-FIXED: Issue posix/011 - Implemented users(\
-    ) function for Cygwin with multiple fallback strategies
-FIXED: Issue posix/015 - TRY203 - \
-    Removed unnecessary try/except in net_if_addrs()
+Uses Cygwin's /proc filesystem, Windows APIs via w32api (GCC-compiled),
+and POSIX APIs. WinSock is avoided — all networking uses POSIX sockets
+or Win32 GetExtendedTcpTable/GetIfTable via ctypes.
 """
 
 import functools
@@ -71,12 +63,6 @@ IOPRIO_CLASS_RT = 1
 IOPRIO_CLASS_BE = 2
 IOPRIO_CLASS_IDLE = 3
 
-# Internal mapping: POSIX class+value → Win32 priority level
-_IOCLASS_TO_WIN32 = {
-    # (class, value_range) → win32_priority
-    # Win32 levels: 0=VeryLow, 1=Low, 2=Normal, 3=High
-}
-
 # Win32 priority → POSIX (class, value) for ionice_get
 _WIN32_TO_IOCLASS = {
     0: (IOPRIO_CLASS_IDLE, 0),
@@ -110,7 +96,7 @@ pio = namedtuple(
 )
 puids = namedtuple('puids', ['real', 'effective', 'saved'])
 pgids = namedtuple('pgids', ['real', 'effective', 'saved'])
-pfile = namedtuple('pfile', ['path', 'fd'])  # For open files
+pfile = namedtuple('pfile', ['path', 'fd'])
 sswap = namedtuple(
     'sswap', ['total', 'used', 'free', 'percent', 'sin', 'sout']
 )
@@ -213,6 +199,8 @@ PROC_STATUSES_LETTER = {
     "D": STATUS_SLEEPING,  # disk sleep → sleeping on Cygwin
     "T": STATUS_STOPPED,
     "Z": STATUS_ZOMBIE,
+    "X": STATUS_DEAD,
+    "x": STATUS_DEAD,
 }
 
 # Connection status mapping from Windows constants to psutil constants
@@ -421,7 +409,7 @@ def net_if_addrs():
 
 
 def net_if_stats():
-    """Return network interface stats using C extension helpers."""
+    """Return network interface stats helpers."""
     from ._common import NIC_DUPLEX_FULL
     from ._common import NIC_DUPLEX_HALF
     from ._common import NIC_DUPLEX_UNKNOWN
@@ -537,9 +525,7 @@ def net_io_counters():
 
 
 def disk_partitions(all=False):
-    """Return mounted disk partitions using C extension.
-
-    FIXED: Issue posix/002 -\
+    """Return mounted disk partitions.
         Return proper namedtuples with mountpoint attribute
     """
     try:
@@ -564,7 +550,7 @@ def disk_partitions(all=False):
 
 
 def disk_usage(path):
-    """Return disk usage statistics for path using C extension."""
+    """Return disk usage statistics for path."""
     try:
         if isinstance(path, bytes):
             path = os.fsdecode(path)
@@ -582,9 +568,7 @@ def disk_usage(path):
 
 
 def disk_io_counters(perdisk=False):
-    """Return disk I/O statistics using C extension (Phase 5.1).
-
-    FIXED: Always return a dictionary as expected by psutil.__init__.py.
+    """Return disk I/O statistics.
     The perdisk parameter is handled by the caller, not by this function.
     """
     # Use C extension for disk I/O counters
@@ -652,9 +636,7 @@ def cpu_times():
 
 
 def per_cpu_times():
-    """Return per-CPU times using C extension.
-
-    UPDATED: Phase 3.3 - Issue #062
+    """Return per-CPU times.
     Simplified to use C extension directly with minimal conversion logic.
     """
     # Use C extension - it's reliable and tested
@@ -676,18 +658,14 @@ def per_cpu_times():
 
 
 def cpu_count_logical():
-    """Return number of logical CPUs using C extension.
-
-    UPDATED: Phase 3.3 - Issue #062
+    """Return number of logical CPUs.
     C extension is reliable, removed unnecessary fallback logic.
     """
     return cext.cpu_count_logical()
 
 
 def cpu_count_cores():
-    """Return number of physical CPU cores using C extension.
-
-    UPDATED: Phase 3.3 - Issue #062
+    """Return number of physical CPU cores.
     C extension is reliable, removed unnecessary fallback logic.
     """
     return cext.cpu_count_cores()
@@ -740,9 +718,7 @@ def cpu_freq():
 
 
 def virtual_memory():
-    """Return virtual memory usage statistics using C extension.
-
-    UPDATED: Phase 3.3 - Issue #062
+    """Return virtual memory usage statistics.
     Use C extension directly instead of manual /proc/meminfo parsing.
     """
     # Get memory information from C extension
@@ -760,9 +736,7 @@ def virtual_memory():
 
 
 def swap_memory():
-    """Return swap memory usage statistics using C extension.
-
-    UPDATED: Phase 3.3 - Issue #062
+    """Return swap memory usage statistics.
     Use C extension directly instead of manual /proc/meminfo parsing.
     """
     # Get swap information from C extension
@@ -1115,17 +1089,17 @@ class Process:
 
     @wrap_exceptions
     def exe(self):
-        """Get process executable path using C extension (Phase 3.2)."""
+        """Get process executable path."""
         return cext.proc_exe(self.pid)
 
     @wrap_exceptions
     def cmdline(self):
-        """Get process command line using C extension (Phase 3.2)."""
+        """Get process command line."""
         return cext.proc_cmdline(self.pid)
 
     @wrap_exceptions
     def ppid(self):
-        """Get parent process ID using C extension (Phase 3.2)."""
+        """Get parent process ID."""
         return cext.proc_ppid(self.pid)
 
     @wrap_exceptions
@@ -1241,9 +1215,7 @@ class Process:
 
     @wrap_exceptions
     def cpu_times(self):
-        """Get process CPU times using C extension (Phase 3.3).
-
-        UPDATED: Phase 3.3 - Issue #062
+        """Get process CPU times.
         Removed unnecessary fallback logic - C extension handles errors.
         """
         return pcputimes(*cext.proc_cpu_times(self.pid))
@@ -1283,12 +1255,12 @@ class Process:
 
     @wrap_exceptions
     def nice_get(self):
-        """Get process nice value using C extension."""
+        """Get process nice value."""
         return cext.getpriority(self.pid)
 
     @wrap_exceptions
     def nice_set(self, value):
-        """Set process nice value using C extension."""
+        """Set process nice value."""
         return cext.setpriority(self.pid, value)
 
     @wrap_exceptions
@@ -1395,9 +1367,7 @@ class Process:
 
     @wrap_exceptions
     def net_connections(self, kind='inet'):
-        """Return network connections for process using C extension.
-
-        FIXED: Issue #012 - Now properly converts raw tuples to namedtuples
+        """Return network connections for process.
         """
         # Get raw connection tuples from C extension
         # Format: (fd, family, type, laddr, raddr, status, pid) -
@@ -1494,12 +1464,12 @@ class Process:
 
     @wrap_exceptions
     def num_ctx_switches(self):
-        """Get number of context switches using C extension (Phase 4.1)."""
+        """Get number of context switches."""
         return pctxsw(*cext.proc_num_ctx_switches(self.pid))
 
     @wrap_exceptions
     def num_fds(self):
-        """Get number of file descriptors using C extension (Phase 4.1)."""
+        """Get number of file descriptors."""
         return cext.proc_num_fds(self.pid)
 
     @wrap_exceptions
@@ -1517,12 +1487,10 @@ class Process:
 
     @wrap_exceptions
     def memory_maps(self):
-        """Get memory maps using C extension (Phase 4.2).
+        """Get memory maps.
 
         Returns raw memory mapping data from the C extension.
         The main Process class handles grouping if needed.
-
-        UPDATED: Phase 4.3 - Issue #043
         Simplified to match other platform implementations by returning
         raw data and letting the main Process class handle grouping.
         """
@@ -1531,31 +1499,6 @@ class Process:
         #              shared_dirty, private_clean, private_dirty,
         #              referenced, anonymous, swap)
         return cext.proc_memory_maps(self.pid)
-
-    @wrap_exceptions
-    def send_signal(self, sig):
-        """Send signal to process."""
-        return os.kill(self.pid, sig)
-
-    @wrap_exceptions
-    def suspend(self):
-        """Suspend process."""
-        return os.kill(self.pid, 19)  # SIGSTOP
-
-    @wrap_exceptions
-    def resume(self):
-        """Resume process."""
-        return os.kill(self.pid, 18)  # SIGCONT
-
-    @wrap_exceptions
-    def terminate(self):
-        """Terminate process."""
-        return os.kill(self.pid, 15)  # SIGTERM
-
-    @wrap_exceptions
-    def kill(self):
-        """Kill process."""
-        return os.kill(self.pid, 9)  # SIGKILL
 
     @wrap_exceptions
     def wait(self, timeout=None):
