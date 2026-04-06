@@ -594,10 +594,10 @@ psutil_proc_memory_maps(PyObject *self, PyObject *args)
             estimated_rss = (long)(size * 0.02);  // 2% - minimal other residency
         }
 
-        PyObject *py_tuple = Py_BuildValue("(sssllllllllll)",
+        PyObject *py_tuple = Py_BuildValue("(ssyllllllllll)",
             addr_str,           // addr
             perms,              // perms
-            pathname,           // path
+            pathname,           // path (bytes — may contain non-UTF-8)
             estimated_rss,      // rss (realistic estimate based on mapping type)
             (long)size,         // size
             (long)(estimated_rss / 2),   // pss (estimate: half of estimated rss)

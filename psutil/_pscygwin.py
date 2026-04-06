@@ -632,8 +632,9 @@ def disk_usage(path):
         # C extension returns tuple: (total, used, free, percent)
         result = cext.disk_usage(path)
         return sdiskusage(*result)
-    except (AttributeError, OSError):
+    except (AttributeError, OSError, UnicodeEncodeError):
         # Fallback: manual calculation using os.statvfs
+        # UnicodeEncodeError: C ext uses "s" format which rejects surrogates
         statvfs = os.statvfs(path)
         total = statvfs.f_blocks * statvfs.f_frsize
         free = statvfs.f_bavail * statvfs.f_frsize
@@ -1553,16 +1554,19 @@ class Process:
     def memory_maps(self):
         """Get memory maps.
 
-        Returns raw memory mapping data from the C extension.
-        The main Process class handles grouping if needed.
-        Simplified to match other platform implementations by returning
-        raw data and letting the main Process class handle grouping.
+        The C extension returns pathname as bytes (may contain
+        non-UTF-8 from /proc/PID/maps).  Decode with surrogateescape
+        so the caller always gets str.
         """
-        # C extension returns list of tuples with memory mapping information
-        # Each tuple: (addr, perms, path, rss, size, pss, shared_clean,
-        #              shared_dirty, private_clean, private_dirty,
-        #              referenced, anonymous, swap)
-        return cext.proc_memory_maps(self.pid)
+        raw = cext.proc_memory_maps(self.pid)
+        result = []
+        for entry in raw:
+            addr, perms, path = entry[0], entry[1], entry[2]
+            rest = entry[3:]
+            if isinstance(path, bytes):
+                path = path.decode('utf-8', 'surrogateescape')
+            result.append((addr, perms, path) + rest)
+        return result
 
     @wrap_exceptions
     def wait(self, timeout=None):
