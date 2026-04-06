@@ -23,6 +23,18 @@ from . import _psposix
 from ._common import AccessDenied
 from ._common import NoSuchProcess
 from ._common import ZombieProcess
+from ._common import CONN_CLOSE
+from ._common import CONN_CLOSE_WAIT
+from ._common import CONN_CLOSING
+from ._common import CONN_ESTABLISHED
+from ._common import CONN_FIN_WAIT1
+from ._common import CONN_FIN_WAIT2
+from ._common import CONN_LAST_ACK
+from ._common import CONN_LISTEN
+from ._common import CONN_NONE
+from ._common import CONN_SYN_RECV
+from ._common import CONN_SYN_SENT
+from ._common import CONN_TIME_WAIT
 from ._common import conn_to_ntuple
 from ._common import sockfam_to_enum
 from ._common import socktype_to_enum
@@ -201,19 +213,22 @@ PROC_STATUSES_LETTER = {
 }
 
 # Connection status mapping from Windows constants to psutil constants
+# Windows MIB_TCP_STATE values from iphlpapi.dll GetExtendedTcpTable.
+# Different numbering from Linux /proc/net/tcp.
 TCP_STATUSES = {
-    1: "ESTABLISHED",
-    2: "SYN_SENT",
-    3: "SYN_RECV",
-    4: "FIN_WAIT1",
-    5: "FIN_WAIT2",
-    6: "TIME_WAIT",
-    7: "CLOSE",
-    8: "CLOSE_WAIT",
-    9: "LAST_ACK",
-    10: "LISTEN",
-    11: "CLOSING",
-    128: "NONE",
+    1: CONN_CLOSE,
+    2: CONN_LISTEN,
+    3: CONN_SYN_SENT,
+    4: CONN_SYN_RECV,
+    5: CONN_ESTABLISHED,
+    6: CONN_FIN_WAIT1,
+    7: CONN_FIN_WAIT2,
+    8: CONN_CLOSE_WAIT,
+    9: CONN_CLOSING,
+    10: CONN_LAST_ACK,
+    11: CONN_TIME_WAIT,
+    12: "DELETE_TCB",
+    128: CONN_NONE,
 }
 
 # =====================================================================
@@ -235,17 +250,20 @@ def net_connections(kind='inet'):
     from ._common import addr
 
     connections = []
-    want_tcp = kind in ('inet', 'inet4', 'tcp', 'tcp4', 'all')
-    want_udp = kind in ('inet', 'inet4', 'udp', 'udp4', 'all')
+    want_tcp4 = kind in ('inet', 'inet4', 'tcp', 'tcp4', 'all')
+    want_udp4 = kind in ('inet', 'inet4', 'udp', 'udp4', 'all')
+    want_tcp6 = kind in ('inet', 'inet6', 'tcp', 'tcp6', 'all')
+    want_udp6 = kind in ('inet', 'inet6', 'udp', 'udp6', 'all')
 
     try:
         iphlpapi = ctypes.CDLL('iphlpapi.dll')
     except OSError:
         return connections
 
-    AF_INET = socket.AF_INET
+    _AF_INET = socket.AF_INET
+    _AF_INET6 = getattr(socket, 'AF_INET6', None)
 
-    if want_tcp:
+    if want_tcp4:
         # GetExtendedTcpTable with TCP_TABLE_OWNER_PID_ALL (5)
         size = c_ulong(0)
         iphlpapi.GetExtendedTcpTable(None, byref(size), 0, 2, 5, 0)
@@ -255,8 +273,6 @@ def net_connections(kind='inet'):
             if ret == 0:
                 raw = buf.raw
                 num = unpack_from('<I', raw, 0)[0]
-                # MIB_TCPROW_OWNER_PID = 24 bytes each
-                # Ports are DWORDs with port in network byte order
                 for i in range(num):
                     off = 4 + i * 24
                     if off + 24 > len(raw):
@@ -269,13 +285,47 @@ def net_connections(kind='inet'):
                     rip = socket.inet_ntoa(pack('<I', ra))
                     laddr_t = addr(lip, lp)
                     raddr_t = addr(rip, rp) if (ra or rp) else ()
-                    status = TCP_STATUSES.get(state, "NONE")
                     conn = conn_to_ntuple(
-                        -1, AF_INET, socket.SOCK_STREAM,
-                        laddr_t, raddr_t, status, TCP_STATUSES, pid)
+                        -1, _AF_INET, socket.SOCK_STREAM,
+                        laddr_t, raddr_t, state, TCP_STATUSES, pid)
                     connections.append(conn)
 
-    if want_udp:
+    if want_tcp6 and _AF_INET6 is not None:
+        # GetExtendedTcpTable for AF_INET6 (23)
+        size = c_ulong(0)
+        iphlpapi.GetExtendedTcpTable(None, byref(size), 0, 23, 5, 0)
+        if size.value > 0:
+            buf = ctypes.create_string_buffer(size.value)
+            ret = iphlpapi.GetExtendedTcpTable(buf, byref(size), 0, 23, 5, 0)
+            if ret == 0:
+                raw = buf.raw
+                num = unpack_from('<I', raw, 0)[0]
+                # MIB_TCP6ROW_OWNER_PID: 16B laddr, 4B scope, 2B lport,
+                # 16B raddr, 4B scope, 2B rport, 4B state, 4B pid = 56B
+                for i in range(num):
+                    off = 4 + i * 56
+                    if off + 56 > len(raw):
+                        break
+                    la6 = raw[off:off + 16]
+                    lscope = unpack_from('<I', raw, off + 16)[0]
+                    lp = socket.ntohs(
+                        unpack_from('<H', raw, off + 20)[0])
+                    ra6 = raw[off + 24:off + 40]
+                    rscope = unpack_from('<I', raw, off + 40)[0]
+                    rp = socket.ntohs(
+                        unpack_from('<H', raw, off + 44)[0])
+                    state = unpack_from('<I', raw, off + 48)[0]
+                    pid = unpack_from('<I', raw, off + 52)[0]
+                    lip = socket.inet_ntop(_AF_INET6, la6)
+                    rip = socket.inet_ntop(_AF_INET6, ra6)
+                    laddr_t = addr(lip, lp)
+                    raddr_t = addr(rip, rp) if any(ra6) or rp else ()
+                    conn = conn_to_ntuple(
+                        -1, _AF_INET6, socket.SOCK_STREAM,
+                        laddr_t, raddr_t, state, TCP_STATUSES, pid)
+                    connections.append(conn)
+
+    if want_udp4:
         # GetExtendedUdpTable with UDP_TABLE_OWNER_PID (1)
         size = c_ulong(0)
         iphlpapi.GetExtendedUdpTable(None, byref(size), 0, 2, 1, 0)
@@ -285,7 +335,6 @@ def net_connections(kind='inet'):
             if ret == 0:
                 raw = buf.raw
                 num = unpack_from('<I', raw, 0)[0]
-                # MIB_UDPROW_OWNER_PID = 12 bytes each
                 for i in range(num):
                     off = 4 + i * 12
                     if off + 12 > len(raw):
@@ -295,8 +344,37 @@ def net_connections(kind='inet'):
                     lip = socket.inet_ntoa(pack('<I', la))
                     laddr_t = addr(lip, lp)
                     conn = conn_to_ntuple(
-                        -1, AF_INET, socket.SOCK_DGRAM,
-                        laddr_t, (), "NONE", TCP_STATUSES, pid)
+                        -1, _AF_INET, socket.SOCK_DGRAM,
+                        laddr_t, (), CONN_NONE, TCP_STATUSES, pid)
+                    connections.append(conn)
+
+    if want_udp6 and _AF_INET6 is not None:
+        # GetExtendedUdpTable for AF_INET6 (23)
+        size = c_ulong(0)
+        iphlpapi.GetExtendedUdpTable(None, byref(size), 0, 23, 1, 0)
+        if size.value > 0:
+            buf = ctypes.create_string_buffer(size.value)
+            ret = iphlpapi.GetExtendedUdpTable(
+                buf, byref(size), 0, 23, 1, 0)
+            if ret == 0:
+                raw = buf.raw
+                num = unpack_from('<I', raw, 0)[0]
+                # MIB_UDP6ROW_OWNER_PID: 16B laddr, 4B scope,
+                # 2B lport, 2B pad, 4B pid = 28B
+                for i in range(num):
+                    off = 4 + i * 28
+                    if off + 28 > len(raw):
+                        break
+                    la6 = raw[off:off + 16]
+                    lscope = unpack_from('<I', raw, off + 16)[0]
+                    lp = socket.ntohs(
+                        unpack_from('<H', raw, off + 20)[0])
+                    pid = unpack_from('<I', raw, off + 24)[0]
+                    lip = socket.inet_ntop(_AF_INET6, la6)
+                    laddr_t = addr(lip, lp)
+                    conn = conn_to_ntuple(
+                        -1, _AF_INET6, socket.SOCK_DGRAM,
+                        laddr_t, (), CONN_NONE, TCP_STATUSES, pid)
                     connections.append(conn)
 
     return connections
@@ -1374,82 +1452,62 @@ class Process:
     @wrap_exceptions
     def net_connections(self, kind='inet'):
         """Return network connections for process.
+
+        Cygwin has no /proc/net/tcp, so the C extension's inode-based
+        approach returns nothing.  Instead, filter system-wide results
+        (from iphlpapi.dll) by Windows PID, then resolve fds from
+        /proc/[pid]/fd/ socket symlinks.
         """
-        # Get raw connection tuples from C extension
-        # Format: (fd, family, type, laddr, raddr, status, pid) -
-        # for process connections
+        # Get Windows PID for this process
         try:
-            raw_connections = cext.proc_net_connections(self.pid, kind)
-        except AttributeError:
+            with open(f'/proc/{self.pid}/winpid') as f:
+                winpid = int(f.read().strip())
+        except (OSError, ValueError):
             return []
 
-        # Convert raw tuples to proper namedtuples
-        connections = []
-        for raw_conn in raw_connections:
-            try:
-                # Handle both formats - with and without PID
-                if not isinstance(raw_conn, (tuple, list)):
-                    continue
-
-                if len(raw_conn) == 7:
-                    # System-wide format with PID
-                    fd, family, type_, laddr, raddr, status, pid = raw_conn
-                elif len(raw_conn) == 6:
-                    # Process-specific format without PID
-                    fd, family, type_, laddr, raddr, status = raw_conn
-                    pid = None
-                else:
-                    continue
-
-                # Convert family and type to proper enums
+        # Collect socket fds from /proc/[pid]/fd/
+        socket_fds = set()
+        try:
+            fd_dir = f'/proc/{self.pid}/fd'
+            for entry in os.listdir(fd_dir):
                 try:
-                    family = sockfam_to_enum(family)
-                    type_ = socktype_to_enum(type_)
-                except (ValueError, KeyError):
-                    # Skip connections with invalid family/type
+                    target = os.readlink(f'{fd_dir}/{entry}')
+                    if target.startswith('socket:['):
+                        socket_fds.add(int(entry))
+                except (OSError, ValueError):
                     continue
+        except OSError:
+            pass
 
-                # Convert addresses to proper format
-                if family in {
-                    socket.AF_INET,
-                    getattr(socket, 'AF_INET6', None),
-                }:
-                    if (
-                        laddr
-                        and isinstance(laddr, (tuple, list))
-                        and len(laddr) == 2
-                    ):
-                        from ._common import addr
-
-                        laddr = addr(*laddr)
-                    else:
-                        laddr = None
-
-                    if (
-                        raddr
-                        and isinstance(raddr, (tuple, list))
-                        and len(raddr) == 2
-                    ):
-                        from ._common import addr
-
-                        raddr = addr(*raddr)
-                    else:
-                        raddr = None
-
-                # Convert status to string
-                if isinstance(status, int):
-                    status = TCP_STATUSES.get(status, "NONE")
-
-                # Create proper namedtuple using conn_to_ntuple
-                conn = conn_to_ntuple(
-                    fd, family, type_, laddr, raddr, status, TCP_STATUSES, pid
-                )
-                connections.append(conn)
-
-            except (ValueError, TypeError, AttributeError):
-                # Skip malformed connections but continue processing
+        # Filter system-wide connections by Windows PID
+        from ._common import pconn
+        all_conns = net_connections(kind)
+        connections = []
+        matched_fds = set()
+        for conn in all_conns:
+            if conn.pid != winpid:
                 continue
-
+            fd = -1
+            # For current process, resolve fd via getsockname
+            if self.pid == os.getpid():
+                for sfd in socket_fds - matched_fds:
+                    try:
+                        s = socket.fromfd(sfd, conn.family, conn.type)
+                        try:
+                            laddr = s.getsockname()
+                            if conn.family == socket.AF_INET6:
+                                laddr = laddr[:2]
+                            if laddr == tuple(conn.laddr):
+                                fd = sfd
+                                matched_fds.add(sfd)
+                        finally:
+                            s.close()
+                    except OSError:
+                        continue
+            connections.append(pconn(
+                fd, conn.family, conn.type,
+                conn.laddr, conn.raddr, conn.status,
+            ))
         return connections
 
     @wrap_exceptions
