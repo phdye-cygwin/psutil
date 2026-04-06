@@ -43,6 +43,7 @@ except ImportError:
 
 import psutil
 from psutil import AIX
+from psutil import CYGWIN
 from psutil import LINUX
 from psutil import MACOS
 from psutil import NETBSD
@@ -1067,6 +1068,14 @@ class PsutilTestCase(unittest.TestCase):
         assert pid not in psutil.pids()
         assert pid not in [x.pid for x in psutil.process_iter()]
 
+    # Cygwin's /proc persists after the Windows process dies.
+    # These methods return stale empty/zero data instead of NSP.
+    _CYGWIN_STALE_OK = frozenset({
+        'cmdline', 'cpu_num', 'cwd', 'gids', 'net_connections',
+        'nice', 'num_threads', 'open_files', 'terminal', 'threads',
+        'uids', 'username',
+    })
+
     def assert_proc_gone(self, proc):
         self.assert_pid_gone(proc.pid)
         ns = process_namespace(proc)
@@ -1079,6 +1088,8 @@ class PsutilTestCase(unittest.TestCase):
                 except psutil.NoSuchProcess as exc:
                     self._check_proc_exc(proc, exc)
                 else:
+                    if CYGWIN and name in self._CYGWIN_STALE_OK:
+                        continue
                     msg = (
                         f"Process.{name}() didn't raise NSP and returned"
                         f" {ret!r}"
@@ -1535,7 +1546,7 @@ class process_namespace:
     if HAS_RLIMIT:
         setters += [('rlimit', (psutil.RLIMIT_NOFILE, (1024, 4096)), {})]
     if HAS_IONICE:
-        if LINUX:
+        if LINUX or CYGWIN:
             setters += [('ionice', (psutil.IOPRIO_CLASS_NONE, 0), {})]
         else:
             setters += [('ionice', (psutil.IOPRIO_NORMAL,), {})]
@@ -2006,7 +2017,7 @@ if POSIX:
         in memory via ctypes. Return the new absolutized path.
         """
         exe = 'pypy' if PYPY else 'python'
-        ext = ".so"
+        ext = ".dll" if CYGWIN else ".so"
         dst = get_testfn(suffix=suffix + ext)
         libs = [
             x.path
@@ -2015,6 +2026,8 @@ if POSIX:
         ]
         src = random.choice(libs)
         shutil.copyfile(src, dst)
+        if CYGWIN:
+            os.chmod(dst, 0o755)
         try:
             ctypes.CDLL(dst)
             yield dst

@@ -57,16 +57,16 @@ class TestAvailConstantsAPIs(PsutilTestCase):
         assert hasattr(psutil, "REALTIME_PRIORITY_CLASS") == WINDOWS
 
     def test_linux_ioprio_linux(self):
-        assert hasattr(psutil, "IOPRIO_CLASS_NONE") == LINUX
-        assert hasattr(psutil, "IOPRIO_CLASS_RT") == LINUX
-        assert hasattr(psutil, "IOPRIO_CLASS_BE") == LINUX
-        assert hasattr(psutil, "IOPRIO_CLASS_IDLE") == LINUX
+        assert hasattr(psutil, "IOPRIO_CLASS_NONE") == (LINUX or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_CLASS_RT") == (LINUX or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_CLASS_BE") == (LINUX or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_CLASS_IDLE") == (LINUX or CYGWIN)
 
     def test_linux_ioprio_windows(self):
-        assert hasattr(psutil, "IOPRIO_HIGH") == (WINDOWS or CYGWIN)
-        assert hasattr(psutil, "IOPRIO_NORMAL") == (WINDOWS or CYGWIN)
-        assert hasattr(psutil, "IOPRIO_LOW") == (WINDOWS or CYGWIN)
-        assert hasattr(psutil, "IOPRIO_VERYLOW") == (WINDOWS or CYGWIN)
+        assert hasattr(psutil, "IOPRIO_HIGH") == WINDOWS
+        assert hasattr(psutil, "IOPRIO_NORMAL") == WINDOWS
+        assert hasattr(psutil, "IOPRIO_LOW") == WINDOWS
+        assert hasattr(psutil, "IOPRIO_VERYLOW") == WINDOWS
 
     @pytest.mark.skipif(
         GITHUB_ACTIONS and LINUX,

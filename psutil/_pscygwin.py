@@ -65,14 +65,29 @@ RLIMIT_FSIZE = _resource.RLIMIT_FSIZE
 RLIMIT_NOFILE = _resource.RLIMIT_NOFILE
 RLIMIT_STACK = _resource.RLIMIT_STACK
 
-# Windows I/O priority constants (same values as _pswindows.py)
-IOPRIO_VERYLOW = 0
-IOPRIO_LOW = 1
-IOPRIO_NORMAL = 2
-IOPRIO_HIGH = 3
+# POSIX I/O priority classes (same values as Linux ioprio_get/set)
+IOPRIO_CLASS_NONE = 0
+IOPRIO_CLASS_RT = 1
+IOPRIO_CLASS_BE = 2
+IOPRIO_CLASS_IDLE = 3
+
+# Internal mapping: POSIX class+value → Win32 priority level
+_IOCLASS_TO_WIN32 = {
+    # (class, value_range) → win32_priority
+    # Win32 levels: 0=VeryLow, 1=Low, 2=Normal, 3=High
+}
+
+# Win32 priority → POSIX (class, value) for ionice_get
+_WIN32_TO_IOCLASS = {
+    0: (IOPRIO_CLASS_IDLE, 0),
+    1: (IOPRIO_CLASS_BE, 7),
+    2: (IOPRIO_CLASS_NONE, 0),
+    3: (IOPRIO_CLASS_RT, 0),
+}
 
 __extra__all__ = [
-    "IOPRIO_VERYLOW", "IOPRIO_LOW", "IOPRIO_NORMAL", "IOPRIO_HIGH",
+    "IOPRIO_CLASS_NONE", "IOPRIO_CLASS_RT",
+    "IOPRIO_CLASS_BE", "IOPRIO_CLASS_IDLE",
 ]
 
 # =====================================================================
@@ -959,15 +974,21 @@ def sensors_battery():
 
 
 def pids():
-    """Return list of PIDs using enhanced cygwin_internal API."""
+    """Return list of PIDs.
+
+    Merges the Cygwin process table (via C extension) with /proc
+    enumeration. The C extension's cygwin_internal(CW_GETPINFO) skips
+    zombie processes, but /proc still has entries for them.
+    """
     try:
-        return cext.pids()
+        result = set(cext.pids())
     except (AttributeError, OSError):
-        # Fallback to /proc parsing if C extension fails
-        try:
-            return [int(x) for x in os.listdir('/proc') if x.isdigit()]
-        except OSError:
-            return []
+        result = set()
+    try:
+        result.update(int(x) for x in os.listdir('/proc') if x.isdigit())
+    except OSError:
+        pass
+    return sorted(result)
 
 
 def pid_exists(pid):
@@ -1286,18 +1307,47 @@ class Process:
 
     @wrap_exceptions
     def ionice_get(self):
-        """Return I/O priority (0-4) via Win32 NtQueryInformationProcess."""
-        return cext.proc_ionice_get(self.pid)
+        """Return I/O priority as (ioclass, value) POSIX-style.
+
+        Maps Win32 priority levels to POSIX IOPRIO_CLASS_* + value.
+        """
+        from ._common import pionice
+
+        win32_prio = cext.proc_ionice_get(self.pid)
+        ioclass, value = _WIN32_TO_IOCLASS.get(
+            win32_prio, (IOPRIO_CLASS_NONE, 0))
+        return pionice(ioclass, value)
 
     @wrap_exceptions
     def ionice_set(self, ioclass, value=None):
-        """Set I/O priority via Win32 NtSetInformationProcess."""
-        if value is not None:
-            raise TypeError("value argument not accepted on this platform")
-        if ioclass not in (IOPRIO_VERYLOW, IOPRIO_LOW, IOPRIO_NORMAL,
-                           IOPRIO_HIGH):
-            raise ValueError(f"{ioclass!r} is not a valid priority")
-        cext.proc_ionice_set(self.pid, ioclass)
+        """Set I/O priority from POSIX-style class + value.
+
+        Maps POSIX IOPRIO_CLASS_* + value to Win32 priority levels.
+        The mapping is lossy — Win32 has 4 levels vs POSIX class+value.
+        """
+        if ioclass == IOPRIO_CLASS_NONE:
+            if value and value != 0:
+                raise ValueError("ioclass accepts no value")
+            win32_prio = 2  # Normal
+        elif ioclass == IOPRIO_CLASS_RT:
+            if value is not None and not (0 <= value <= 7):
+                raise ValueError("value must be between 0 and 7")
+            win32_prio = 3  # High
+        elif ioclass == IOPRIO_CLASS_BE:
+            if value is None:
+                value = 0
+            if not (0 <= value <= 7):
+                raise ValueError("value must be between 0 and 7")
+            # Map BE value range to Win32 levels:
+            # value 0-3 → Normal (2), value 4-7 → Low (1)
+            win32_prio = 1 if value >= 4 else 2
+        elif ioclass == IOPRIO_CLASS_IDLE:
+            if value and value != 0:
+                raise ValueError("ioclass accepts no value")
+            win32_prio = 0  # VeryLow
+        else:
+            raise ValueError(f"{ioclass!r} is not a valid ioclass")
+        cext.proc_ionice_set(self.pid, win32_prio)
 
     @wrap_exceptions
     def cpu_affinity_get(self):

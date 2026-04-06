@@ -347,7 +347,7 @@ class TestProcess(PsutilTestCase):
             assert io2[i] >= 0
 
     @pytest.mark.skipif(not HAS_IONICE, reason="not supported")
-    @pytest.mark.skipif(not LINUX, reason="linux only")
+    @pytest.mark.skipif(not (LINUX or CYGWIN), reason="POSIX ionice only")
     def test_ionice_linux(self):
         def cleanup(init):
             ioclass, value = init
@@ -372,7 +372,13 @@ class TestProcess(PsutilTestCase):
             p.ionice(psutil.IOPRIO_CLASS_IDLE, value=7)
         # normal
         p.ionice(psutil.IOPRIO_CLASS_BE)
-        assert tuple(p.ionice()) == (psutil.IOPRIO_CLASS_BE, 0)
+        if CYGWIN:
+            # Lossy mapping: BE without value → Win32 Normal → reads
+            # back as NONE (Win32 has 4 levels, can't distinguish)
+            assert p.ionice()[0] in (
+                psutil.IOPRIO_CLASS_BE, psutil.IOPRIO_CLASS_NONE)
+        else:
+            assert tuple(p.ionice()) == (psutil.IOPRIO_CLASS_BE, 0)
         p.ionice(psutil.IOPRIO_CLASS_BE, value=7)
         assert tuple(p.ionice()) == (psutil.IOPRIO_CLASS_BE, 7)
         with pytest.raises(ValueError):
@@ -393,7 +399,7 @@ class TestProcess(PsutilTestCase):
 
     @pytest.mark.skipif(not HAS_IONICE, reason="not supported")
     @pytest.mark.skipif(
-        not (WINDOWS or CYGWIN), reason="Windows/Cygwin only"
+        not WINDOWS, reason="not supported on this win version"
     )
     def test_ionice_win(self):
         p = psutil.Process()
@@ -462,7 +468,7 @@ class TestProcess(PsutilTestCase):
             p.rlimit(psutil.RLIMIT_NOFILE, (5, 5, 5))
 
     @pytest.mark.skipif(not HAS_RLIMIT, reason="not supported")
-    @pytest.mark.skipif(CYGWIN, reason="Cygwin setrlimit fails with RLIM_INFINITY hard limit")
+    @pytest.mark.skipif(CYGWIN, reason="Cygwin setrlimit(RLIMIT_FSIZE) not functional")
     def test_rlimit(self):
         p = psutil.Process()
         testfn = self.get_testfn()
@@ -671,7 +677,6 @@ class TestProcess(PsutilTestCase):
                     assert value >= 0, value
 
     @pytest.mark.skipif(not HAS_MEMORY_MAPS, reason="not supported")
-    @pytest.mark.skipif(CYGWIN, reason="Cygwin uses .dll not .so; copyload_shared_lib fails")
     def test_memory_maps_lists_lib(self):
         # Make sure a newly loaded shared lib is listed.
         p = psutil.Process()
@@ -1105,7 +1110,7 @@ class TestProcess(PsutilTestCase):
         OPENBSD or NETBSD, reason="not reliable on OPENBSD & NETBSD"
     )
     @pytest.mark.skipif(
-        CYGWIN, reason="Cygwin /proc/[pid]/status ctx switches don't update"
+        CYGWIN, reason="Cygwin has no per-process context switch counters"
     )
     def test_num_ctx_switches(self):
         p = psutil.Process()
@@ -1387,9 +1392,6 @@ class TestProcess(PsutilTestCase):
             assert p1.ppid() == p1_ppid
             assert p2.ppid() == p2_ppid
 
-    @pytest.mark.skipif(
-        CYGWIN, reason="Cygwin zombies remain queryable longer than Linux"
-    )
     def test_halfway_terminated_process(self):
         # Test that NoSuchProcess exception gets raised in case the
         # process dies after we create the Process object.
@@ -1398,6 +1400,15 @@ class TestProcess(PsutilTestCase):
         # >>> time.sleep(2)  # time-consuming task, process dies in meantime
         # >>> proc.name()
         # Refers to Issue #15
+
+        # Cygwin's /proc persists after the Windows process dies, so
+        # some methods return stale empty/zero data instead of NSP.
+        _CYGWIN_STALE_OK = frozenset({
+            'cmdline', 'cpu_num', 'cwd', 'gids', 'net_connections',
+            'nice', 'num_threads', 'open_files', 'terminal', 'threads',
+            'uids', 'username',
+        })
+
         def assert_raises_nsp(fun, fun_name):
             try:
                 ret = fun()
@@ -1412,6 +1423,9 @@ class TestProcess(PsutilTestCase):
             else:
                 # NtQuerySystemInformation succeeds even if process is gone.
                 if WINDOWS and fun_name in {'exe', 'name'}:
+                    return
+                # Cygwin /proc returns stale data for dead processes.
+                if CYGWIN and fun_name in _CYGWIN_STALE_OK:
                     return
                 raise pytest.fail(
                     f"{fun!r} didn't raise NSP and returned {ret!r} instead"
@@ -1430,7 +1444,7 @@ class TestProcess(PsutilTestCase):
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
     @pytest.mark.skipif(
-        CYGWIN, reason="Cygwin zombie process semantics differ from Linux"
+        CYGWIN, reason="Cygwin process enumeration (pids/readdir) skips zombies"
     )
     def test_zombie_process(self):
         _parent, zombie = self.spawn_zombie()
@@ -1588,7 +1602,11 @@ class TestProcess(PsutilTestCase):
     @pytest.mark.skipif(
         NETBSD, reason="sometimes fails on `assert is_running()`"
     )
-    @pytest.mark.skipif(CYGWIN, reason="execve race: process exits before environ can be read")
+    @pytest.mark.skipif(
+        CYGWIN,
+        reason="Cygwin execve creates a new Windows process, changing "
+               "create_time and breaking PID identity detection",
+    )
     def test_weird_environ(self):
         # environment variables can contain values without an equals sign
         code = textwrap.dedent("""
