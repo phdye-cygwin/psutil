@@ -377,7 +377,39 @@ def net_connections(kind='inet'):
                         laddr_t, (), CONN_NONE, TCP_STATUSES, pid)
                     connections.append(conn)
 
-    return connections
+    # GetExtendedUdpTable can return duplicate entries for multicast
+    # sockets.  Deduplicate to match Windows behavior.
+    seen = set()
+    deduped = []
+    for conn in connections:
+        if conn not in seen:
+            seen.add(conn)
+            deduped.append(conn)
+
+    # iphlpapi returns Windows PIDs, but psutil on Cygwin uses Cygwin
+    # PIDs everywhere.  Build a winpid→cygpid map from /proc and
+    # translate.  Native Windows processes without a Cygwin PID keep
+    # their Windows PID (still usable with os.kill on Cygwin).
+    winpid_map = {}
+    try:
+        for entry in os.listdir('/proc'):
+            if entry.isdigit():
+                try:
+                    with open(f'/proc/{entry}/winpid') as f:
+                        winpid_map[int(f.read().strip())] = int(entry)
+                except (OSError, ValueError):
+                    pass
+    except OSError:
+        pass
+    if winpid_map:
+        translated = []
+        for conn in deduped:
+            cygpid = winpid_map.get(conn.pid, conn.pid)
+            if cygpid != conn.pid:
+                conn = conn._replace(pid=cygpid)
+            translated.append(conn)
+        return translated
+    return deduped
 
 
 def net_if_addrs():
@@ -1456,16 +1488,9 @@ class Process:
 
         Cygwin has no /proc/net/tcp, so the C extension's inode-based
         approach returns nothing.  Instead, filter system-wide results
-        (from iphlpapi.dll) by Windows PID, then resolve fds from
+        (from iphlpapi.dll) by PID, then resolve fds from
         /proc/[pid]/fd/ socket symlinks.
         """
-        # Get Windows PID for this process
-        try:
-            with open(f'/proc/{self.pid}/winpid') as f:
-                winpid = int(f.read().strip())
-        except (OSError, ValueError):
-            return []
-
         # Collect socket fds from /proc/[pid]/fd/
         socket_fds = set()
         try:
@@ -1480,13 +1505,14 @@ class Process:
         except OSError:
             pass
 
-        # Filter system-wide connections by Windows PID
+        # Filter system-wide connections by Cygwin PID.
+        # net_connections() already translates Windows PIDs to Cygwin PIDs.
         from ._common import pconn
         all_conns = net_connections(kind)
         connections = []
         matched_fds = set()
         for conn in all_conns:
-            if conn.pid != winpid:
+            if conn.pid != self.pid:
                 continue
             fd = -1
             # For current process, resolve fd via getsockname
