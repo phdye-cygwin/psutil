@@ -45,14 +45,24 @@ typedef LONG (WINAPI *CallNtPowerInformation_t)(
 
 /*
  * Cygwin Python doesn't have PyErr_SetFromWindowsErr.
- * Map GetLastError() to a Python OSError with the Windows error code.
+ * Map GetLastError() to the appropriate Python exception:
+ *   ERROR_ACCESS_DENIED (5) → PermissionError
+ *   all others              → OSError
+ *
+ * This matters because wrap_exceptions() in _pscygwin.py catches
+ * PermissionError and translates it to psutil.AccessDenied.
  */
 static void
 psutil_PyErr_SetFromWindowsErr(DWORD err)
 {
     if (err == 0)
         err = GetLastError();
-    PyErr_Format(PyExc_OSError, "Windows error %lu", (unsigned long)err);
+    if (err == ERROR_ACCESS_DENIED)
+        PyErr_Format(PyExc_PermissionError, "Windows error %lu",
+                     (unsigned long)err);
+    else
+        PyErr_Format(PyExc_OSError, "Windows error %lu",
+                     (unsigned long)err);
 }
 
 /*
