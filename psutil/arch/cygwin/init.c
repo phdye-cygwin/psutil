@@ -102,7 +102,7 @@ psutil_cygwin_check_pid_range(pid_t pid)
  *
  * This is the Cygwin implementation of psutil_pid_exists.
  * It uses both Unix-style signal checking and /proc filesystem.
- * FIXED: PID 0 should exist (system idle process)
+ * PID 0 should exist (system idle process)
  */
 int
 psutil_pid_exists(pid_t pid)
@@ -209,7 +209,7 @@ psutil_cygwin_error_handler(const char *syscall, int use_errno)
 }
 
 // == ===========================================================================
-// --- Additional Basic Utility Functions (Phase 1 Extensions)
+// --- Additional Basic Utility Functions (Extensions)
 // == ===========================================================================
 
 /*
@@ -260,7 +260,7 @@ psutil_getpagesize_posix(PyObject *self, PyObject *args)
 }
 
 // == ===========================================================================
-// --- Centralized Caching System Implementation (Phase C1)
+// --- Centralized Caching System Implementation
 // == ===========================================================================
 
 // Global cache instances

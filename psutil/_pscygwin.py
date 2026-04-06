@@ -1059,7 +1059,7 @@ def wrap_exceptions(fun):
 
 
 class Process:
-    """Wrapper around process ID."""
+    """Cygwin process implementation."""
 
     __slots__ = ["_cache", "_name", "_ppid", "pid"]
 

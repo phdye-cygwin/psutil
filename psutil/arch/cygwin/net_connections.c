@@ -213,7 +213,7 @@ connection_matches_kind(const char *kind, const char *proto, int family)
     }
 
     if (strcmp(kind, "unix") == 0) {
-        return 0;  // Unix sockets not supported on Cygwin Phase 1
+        return 0;  // Unix sockets not supported on Cygwin
     }
 
     return 0;

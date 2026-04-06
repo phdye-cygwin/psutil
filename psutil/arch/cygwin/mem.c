@@ -6,8 +6,8 @@
  * Cygwin platform C extension - Memory Functions
  * System and Process Memory Information
  *
- * UPDATED: Issue #007 - Perfect PSX.CC Algorithm Match
- * Implements the EXACT memory calculation logic from psx.cc lines 306-345
+ * Perfect PSX.CC Algorithm Match
+ * Implements the memory calculation logic from psx.cc lines 306-345
  * This ensures perfect VSZ/RSS alignment with the psx utility
  */
 
@@ -51,7 +51,7 @@ static int memory_debug = 0;
 } while (0)
 
 // == ===========================================================================
-// --- Windows API Memory Functions (Issue #007 - PERFECT psx.cc match)
+// --- Windows API Memory Functions(psx.cc match)
 // == ===========================================================================
 
 /*
@@ -76,8 +76,8 @@ get_windows_pid_from_cygwin_pid(pid_t cygwin_pid)
 }
 
 /*
- * Get process memory info using PERFECT psx.cc algorithm (Issue #007)
- * This function implements the EXACT logic from psx.cc lines 306-345
+ * Get process memory info using psx.cc algorithm
+ * This function implements the logic from psx.cc lines 306-345
  *
  * From psx.cc get_process_memory_info():
  * - Line 319: *workingSetSize = pmc.WorkingSetSize
@@ -101,7 +101,7 @@ get_process_memory_info_win32(DWORD processId, SIZE_T *workingSetSize, SIZE_T *v
     *workingSetSize = 0;
     *virtualSize = 0;
 
-    MEM_DEBUG_PRINT("Getting memory info for Windows PID %u (PERFECT psx.cc algorithm)", processId);
+    MEM_DEBUG_PRINT("Getting memory info for Windows PID %u (psx.cc algorithm)", processId);
 
     // PSX.CC Line 308-313: OpenProcess with PROCESS_QUERY_INFORMATION | PROCESS_VM_READ
     hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processId);
@@ -343,7 +343,7 @@ psutil_swap_memory(PyObject *self, PyObject *args)
 }
 
 // == ===========================================================================
-// --- Process Memory Functions - WITH PERFECT PSX.CC ALIGNMENT (Issue #007)
+// --- Process Memory Functions - WITH PSX.CC ALIGNMENT
 // == ===========================================================================
 
 /*
@@ -437,9 +437,9 @@ psutil_proc_memory_info_proc_fallback(PyObject *self, PyObject *args)
 }
 
 /*
- * Get process memory information using PERFECT psx.cc algorithm (Issue #007)
+ * Get process memory information using psx.cc algorithm
  * Returns tuple: (rss, vms, shared, text, lib, data, dirty)
- * RSS and VMS now use IDENTICAL calculation as psx.cc for perfect alignment
+ * RSS and VMS now use identical calculation as psx.cc for perfect alignment
  */
 PyObject *
 psutil_proc_memory_info(PyObject *self, PyObject *args)
@@ -451,24 +451,24 @@ psutil_proc_memory_info(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    MEM_DEBUG_PRINT("Getting memory info for Cygwin PID %d (PERFECT psx.cc algorithm)", pid);
+    MEM_DEBUG_PRINT("Getting memory info for Cygwin PID %d (psx.cc algorithm)", pid);
 
-    // PHASE 1: Try PERFECT psx.cc Windows API (preferred method)
+    // Try Win32 API first (preferred — accurate RSS/VSZ)
     DWORD winpid = get_windows_pid_from_cygwin_pid(pid);
     if (winpid != 0) {
-        // Use PERFECT psx.cc algorithm for memory information
+        // Use psx.cc algorithm for memory information
         if (get_process_memory_info_win32(winpid, &workingSetSize, &virtualSize)) {
             unsigned long long rss_bytes = (unsigned long long)workingSetSize;
             unsigned long long vms_bytes = (unsigned long long)virtualSize;
 
-            MEM_DEBUG_PRINT("Returning PERFECT psx.cc memory info - RSS: %llu bytes (%llu KB), VSZ: %llu bytes (%llu KB)",
+            MEM_DEBUG_PRINT("Returning psx.cc memory info - RSS: %llu bytes (%llu KB), VSZ: %llu bytes (%llu KB)",
                            rss_bytes, rss_bytes/1024, vms_bytes, vms_bytes/1024);
 
             // Return tuple: (rss, vms, shared, text, lib, data, dirty)
-            // RSS and VMS now use IDENTICAL psx.cc algorithm
+            // RSS and VMS now use identical psx.cc algorithm
             return Py_BuildValue("(KKKKKKK)",
                                 rss_bytes,  // RSS from psx.cc WorkingSetSize
-                                vms_bytes,  // VSZ from PERFECT psx.cc algorithm
+                                vms_bytes,  // VSZ from psx.cc algorithm
                                 0ULL,       // shared (placeholder)
                                 0ULL,       // text (placeholder)
                                 0ULL,       // lib (placeholder)
@@ -477,7 +477,7 @@ psutil_proc_memory_info(PyObject *self, PyObject *args)
         }
     }
 
-    // PHASE 2: Fallback to /proc parsing if Windows API fails or PID conversion fails
+    // Fallback to /proc parsing
     MEM_DEBUG_PRINT("Windows API failed or PID conversion failed, falling back to /proc parsing");
     return psutil_proc_memory_info_proc_fallback(self, args);
 }
@@ -631,7 +631,7 @@ psutil_proc_memory_maps(PyObject *self, PyObject *args)
 }
 
 /*
- * Get extended process memory information using PERFECT psx.cc Windows APIs first
+ * Get extended process memory information using psx.cc Windows APIs first
  * Returns tuple: (rss, vms, shared, text, lib, data, dirty, uss, pss, swap)
  * Where uss, pss, swap are extended memory metrics
  */
@@ -645,12 +645,12 @@ psutil_proc_memory_full_info(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    MEM_DEBUG_PRINT("Getting full memory info for Cygwin PID %d (PERFECT psx.cc algorithm)", pid);
+    MEM_DEBUG_PRINT("Getting full memory info for Cygwin PID %d (psx.cc algorithm)", pid);
 
-    // PHASE 1: Try PERFECT psx.cc Windows API (preferred method)
+    // Try Win32 API first (preferred — accurate RSS/VSZ)
     DWORD winpid = get_windows_pid_from_cygwin_pid(pid);
     if (winpid != 0) {
-        // Use PERFECT psx.cc algorithm for memory information
+        // Use psx.cc algorithm for memory information
         if (get_process_memory_info_win32(winpid, &workingSetSize, &virtualSize)) {
             unsigned long long rss_bytes = (unsigned long long)workingSetSize;
             unsigned long long vms_bytes = (unsigned long long)virtualSize;
@@ -665,14 +665,14 @@ psutil_proc_memory_full_info(PyObject *self, PyObject *args)
             // Swap: Not easily available from Windows API, use 0
             unsigned long long swap_bytes = 0ULL;
 
-            MEM_DEBUG_PRINT("Returning PERFECT psx.cc full memory info - RSS: %llu, VSZ: %llu, USS: %llu, PSS: %llu",
+            MEM_DEBUG_PRINT("Returning psx.cc full memory info - RSS: %llu, VSZ: %llu, USS: %llu, PSS: %llu",
                            rss_bytes, vms_bytes, uss_bytes, pss_bytes);
 
             // Return extended memory information tuple
             // Format: (rss, vms, shared, text, lib, data, dirty, uss, pss, swap)
             return Py_BuildValue("(KKKKKKKKKK)",
                                 rss_bytes,  // RSS from psx.cc WorkingSetSize
-                                vms_bytes,  // VSZ from PERFECT psx.cc algorithm
+                                vms_bytes,  // VSZ from psx.cc algorithm
                                 0ULL,       // shared (placeholder)
                                 0ULL,       // text (placeholder)
                                 0ULL,       // lib (placeholder)
@@ -684,7 +684,7 @@ psutil_proc_memory_full_info(PyObject *self, PyObject *args)
         }
     }
 
-    // PHASE 2: Fallback to original /proc/PID/statm implementation
+    // Fallback to /proc/PID/statm
     MEM_DEBUG_PRINT("Windows API failed, falling back to /proc parsing for full memory info");
 
     char path[PATH_MAX];
@@ -757,7 +757,7 @@ psutil_proc_memory_full_info(PyObject *self, PyObject *args)
 }
 
 // == ===========================================================================
-// --- Memory Debug and Testing Functions (Issue #007)
+// --- Memory Debug and Testing Functions
 // == ===========================================================================
 
 /*
@@ -780,7 +780,7 @@ psutil_set_memory_debug(PyObject *self, PyObject *args)
 
 /*
  * Test function to compare memory values with psx.cc
- * UPDATED: Issue #007 - Uses PERFECT psx.cc algorithm with detailed debug output
+ * Uses psx.cc algorithm with detailed debug output
  */
 PyObject *
 psutil_test_memory_alignment(PyObject *self, PyObject *args)
@@ -792,7 +792,7 @@ psutil_test_memory_alignment(PyObject *self, PyObject *args)
         return NULL;
     }
 
-    fprintf(stderr, "=== Memory Alignment Test for PID %d (PERFECT psx.cc Algorithm) ===\n", pid);
+    fprintf(stderr, "=== Memory Alignment Test for PID %d (psx.cc Algorithm) ===\n", pid);
 
     // Convert Cygwin PID to Windows PID
     DWORD winpid = get_windows_pid_from_cygwin_pid(pid);
@@ -803,18 +803,18 @@ psutil_test_memory_alignment(PyObject *self, PyObject *args)
 
     fprintf(stderr, "Cygwin PID %d -> Windows PID %u\n", pid, winpid);
 
-    // Get Windows API memory info using PERFECT psx.cc algorithm
+    // Get Windows API memory info using psx.cc algorithm
     if (get_process_memory_info_win32(winpid, &workingSetSize, &virtualSize)) {
         unsigned long rss_kb = (unsigned long)(workingSetSize / 1024);
         unsigned long vsz_kb = (unsigned long)(virtualSize / 1024);
 
-        fprintf(stderr, "PERFECT psx.cc Algorithm Results:\n");
+        fprintf(stderr, "psx.cc Algorithm Results:\n");
         fprintf(stderr, "  RSS: %lu KB (%lu bytes)\n", rss_kb, (unsigned long)workingSetSize);
         fprintf(stderr, "  VSZ: %lu KB (%lu bytes)\n", vsz_kb, (unsigned long)virtualSize);
         fprintf(stderr, "  VSZ >= RSS: %s\n", (virtualSize >= workingSetSize) ? "Yes" : "No");
 
         // Show calculation details
-        fprintf(stderr, "\nPERFECT psx.cc Algorithm Details (Issue #007):\n");
+        fprintf(stderr, "\npsx.cc Algorithm Details:\n");
         fprintf(stderr, "  1. RSS = pmc.WorkingSetSize (line 319)\n");
         fprintf(stderr, "  2. VSZ = pmc.PagefileUsage (line 322)\n");
         fprintf(stderr, "  3. IF VSZ == 0 OR VSZ < RSS (line 325):\n");
@@ -832,6 +832,6 @@ psutil_test_memory_alignment(PyObject *self, PyObject *args)
         fprintf(stderr, "ERROR: Windows API call failed for process %u\n", winpid);
     }
 
-    fprintf(stderr, "=== End PERFECT psx.cc Memory Alignment Test ===\n");
+    fprintf(stderr, "=== End psx.cc Memory Alignment Test ===\n");
     Py_RETURN_NONE;
 }

@@ -6,10 +6,10 @@
  * Cygwin platform C extension - Main module
  * This file contains only Python bindings and routing - no platform headers
  *
- * UPDATED: Converted to use consistent POSIX socket APIs throughout
+ * Uses POSIX socket APIs throughout (no WinSock)
  * Removed WinSock dependencies to work properly with Cygwin's POSIX socket layer
  *
- * UPDATED: Issue #052 - Added Windows API memory alignment functions
+ * 
  */
 
 #include <Python.h>
@@ -127,19 +127,19 @@ static PyMethodDef mod_methods[] = {
     {"proc_open_files", psutil_proc_open_files, METH_VARARGS,
      "Get list of open files for a process"},
 
-    // Memory functions (arch/cygwin/mem.c) - WITH WINDOWS API ALIGNMENT
+    // Memory functions (arch/cygwin/mem.c)
     {"virtual_memory", psutil_virtual_memory, METH_VARARGS,
      "Get virtual memory information"},
     {"swap_memory", psutil_swap_memory, METH_VARARGS,
      "Get swap memory information"},
     {"proc_memory_info", psutil_proc_memory_info, METH_VARARGS,
-     "Get process memory information - Windows API aligned (Issue #052)"},
+     "Get process memory information"},
     {"proc_memory_maps", psutil_proc_memory_maps, METH_VARARGS,
      "Get process memory mapping information"},
     {"proc_memory_full_info", psutil_proc_memory_full_info, METH_VARARGS,
-     "Get extended process memory information - Windows API aligned (Issue #052)"},
+     "Get extended process memory information"},
 
-    // Memory alignment and testing functions (Issue #052)
+    // Memory alignment and testing functions
     {"set_memory_debug", psutil_set_memory_debug, METH_VARARGS,
      "Enable/disable memory alignment debug output"},
     {"test_memory_alignment", psutil_test_memory_alignment, METH_VARARGS,
@@ -222,7 +222,7 @@ static PyMethodDef mod_methods[] = {
 static struct PyModuleDef moduledef = {
     PyModuleDef_HEAD_INIT,
     "_psutil_cygwin",
-    "Cygwin C extension for psutil - POSIX-consistent with Windows API memory alignment (Issue #052)",
+    "Cygwin C extension for psutil - Cygwin C extension for psutil",
     -1,
     mod_methods,
     NULL,

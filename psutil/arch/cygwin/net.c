@@ -7,7 +7,7 @@
  * This file integrates both POSIX and Windows networking functionality while
  * avoiding header conflicts through careful compilation unit separation.
  *
- * FIXED: Parameter validation, interface function errors, performance issues
+ * Parameter validation, interface function errors, performance issues
  */
 
 #include <Python.h>
@@ -83,7 +83,7 @@ psutil_validate_connection_kind(const char *kind)
     }
 
     // Valid kinds: inet, inet4, inet6, tcp, tcp4, tcp6, udp, udp4, udp6, all
-    // Also allow 'unix' for compatibility even though not supported on Cygwin Phase 1
+    // Also allow 'unix' for compatibility even though not supported on Cygwin
     const char *valid_kinds[] = {
         "inet", "inet4", "inet6", "tcp", "tcp4", "tcp6",
         "udp", "udp4", "udp6", "all", "unix", NULL
@@ -143,7 +143,7 @@ psutil_convert_ipaddr_cygwin(struct sockaddr *addr, int family)
 /*
  * Check if an interface entry already exists in the list to avoid duplicates
  * FIXED Issue 016: Prevent duplicate interface entries
- * OPTIMIZED: Use cached interface lookup for better performance
+ * Use cached interface lookup for better performance
  */
 static int
 interface_already_added(PyObject *py_retlist, const char *interface_name, int family)
@@ -183,7 +183,7 @@ interface_already_added(PyObject *py_retlist, const char *interface_name, int fa
  *
  * FIXED Issue 014: Include all interfaces
  * FIXED Issue 016: Use empty strings instead of None, prevent duplicates
- * OPTIMIZED: Better performance for large interface lists
+ * Better performance for large interface lists
  */
 PyObject*
 psutil_net_if_addrs(PyObject* self, PyObject* args)
@@ -314,7 +314,7 @@ error:
 /*
  * Return NIC MTU.
  * Standard POSIX implementation suitable for Cygwin.
- * FIXED: Better error handling and parameter validation
+ * Better error handling and parameter validation
  */
 PyObject *
 psutil_net_if_mtu(PyObject *self, PyObject *args)
@@ -378,7 +378,7 @@ append_flag(PyObject *py_retlist, const char *flag_name)
 /*
  * Get all of the NIC flags and return them.
  * Standard POSIX implementation suitable for Cygwin.
- * FIXED: Better parameter validation and error handling
+ * Better parameter validation and error handling
  */
 PyObject *
 psutil_net_if_flags(PyObject *self, PyObject *args)
@@ -497,7 +497,7 @@ error:
 /*
  * Inspect NIC flags, returns a bool indicating whether the NIC is
  * running. Standard POSIX implementation suitable for Cygwin.
- * FIXED: Better parameter validation and error handling
+ * Better parameter validation and error handling
  */
 PyObject *
 psutil_net_if_is_running(PyObject *self, PyObject *args)
@@ -547,7 +547,7 @@ psutil_net_if_is_running(PyObject *self, PyObject *args)
  * Return stats about a particular network interface.
  * For Cygwin, we provide a minimal implementation that returns
  * default values since the BSD media framework isn't available.
- * FIXED: Added proper parameter validation and interface existence check
+ * Added proper parameter validation and interface existence check
  */
 PyObject *
 psutil_net_if_duplex_speed(PyObject *self, PyObject *args)

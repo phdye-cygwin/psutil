@@ -125,7 +125,7 @@ psutil_proc_io_counters(PyObject *self, PyObject *args)
  * Get process context switch count from /proc/PID/status
  * Returns tuple: (voluntary_ctx_switches, nonvoluntary_ctx_switches)
  *
- * OPTIMIZED: Improved performance for Phase B2.3
+ * 
  * - Early termination after finding both fields
  * - Efficient string matching with prefix checks
  * - Reduced buffer sizes and memory allocations
