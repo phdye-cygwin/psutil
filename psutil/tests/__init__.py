@@ -266,6 +266,16 @@ def _get_py_exe():
 
 
 PYTHON_EXE, PYTHON_EXE_ENV = _get_py_exe()
+if CYGWIN:
+    # Cygwin: psutil is built in-place but not pip-installed, so
+    # subprocesses (scripts) can't find it.  pytest adds cwd to
+    # sys.path for the main process, but subprocess scripts get
+    # their own directory as sys.path[0] instead.
+    if ROOT_DIR not in PYTHON_EXE_ENV.get('PYTHONPATH', '').split(os.pathsep):
+        _pp = PYTHON_EXE_ENV.get('PYTHONPATH', '')
+        PYTHON_EXE_ENV['PYTHONPATH'] = (
+            ROOT_DIR + os.pathsep + _pp if _pp else ROOT_DIR
+        )
 DEVNULL = open(os.devnull, 'r+')  # noqa: SIM115
 atexit.register(DEVNULL.close)
 
