@@ -19,6 +19,7 @@ from unittest import mock
 
 import psutil
 import psutil.tests
+from psutil import CYGWIN
 from psutil import FREEBSD
 from psutil import NETBSD
 from psutil import POSIX
@@ -321,6 +322,9 @@ class TestNetUtils(PsutilTestCase):
             assert client.getsockname() != addr
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
+    @pytest.mark.skipif(
+        CYGWIN, reason="UNIX SOCK_STREAM connect blocks without accept"
+    )
     @pytest.mark.skipif(
         NETBSD or FREEBSD, reason="/var/run/log UNIX socket opened by default"
     )

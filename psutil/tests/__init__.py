@@ -195,7 +195,7 @@ HAS_ENVIRON = hasattr(psutil.Process, "environ")
 HAS_GETLOADAVG = hasattr(psutil, "getloadavg")
 HAS_IONICE = hasattr(psutil.Process, "ionice")
 HAS_MEMORY_MAPS = hasattr(psutil.Process, "memory_maps")
-HAS_NET_CONNECTIONS_UNIX = POSIX and not SUNOS
+HAS_NET_CONNECTIONS_UNIX = POSIX and not SUNOS and not CYGWIN
 HAS_NET_IO_COUNTERS = hasattr(psutil, "net_io_counters")
 HAS_PROC_CPU_NUM = hasattr(psutil.Process, "cpu_num")
 HAS_PROC_IO_COUNTERS = hasattr(psutil.Process, "io_counters")
@@ -1844,7 +1844,9 @@ def create_sockets():
                 bind_socket(socket.AF_INET6, socket.SOCK_STREAM),
                 bind_socket(socket.AF_INET6, socket.SOCK_DGRAM),
             ))
-        if POSIX and HAS_NET_CONNECTIONS_UNIX:
+        if POSIX and HAS_NET_CONNECTIONS_UNIX and not CYGWIN:
+            # Cygwin: UNIX SOCK_STREAM connect blocks without accept
+            # and net_connections can't enumerate UNIX sockets.
             fname1 = get_testfn()
             fname2 = get_testfn()
             s1, s2 = unix_socketpair(fname1)
