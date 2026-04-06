@@ -73,6 +73,7 @@ from contextlib import closing
 
 import psutil
 from psutil import BSD
+from psutil import CYGWIN
 from psutil import MACOS
 from psutil import NETBSD
 from psutil import OPENBSD
@@ -231,6 +232,7 @@ class TestFSAPIs(BaseUnicodeTest):
             assert os.path.normcase(path) == os.path.normcase(self.funky_name)
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
+    @pytest.mark.skipif(CYGWIN, reason="UNIX socket enumeration unsupported")
     def test_proc_net_connections(self):
         name = self.get_testfn(suffix=self.funky_suffix)
         sock = bind_unix_socket(name)
@@ -242,6 +244,7 @@ class TestFSAPIs(BaseUnicodeTest):
             assert conn.laddr == name
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
+    @pytest.mark.skipif(CYGWIN, reason="UNIX socket enumeration unsupported")
     @pytest.mark.skipif(
         not HAS_NET_CONNECTIONS_UNIX, reason="can't list UNIX sockets"
     )
