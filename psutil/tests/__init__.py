@@ -164,6 +164,9 @@ if CI_TESTING:
     GLOBAL_TIMEOUT *= 3
     TOLERANCE_SYS_MEM *= 4
     TOLERANCE_DISK_USAGE *= 3
+if CYGWIN:
+    # Process iteration crosses POSIX/Win32 boundary per PID.
+    GLOBAL_TIMEOUT *= 2
 
 # --- file names
 
