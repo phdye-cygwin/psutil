@@ -385,15 +385,31 @@ class TestT10CpuAffinity:
 
 
 class TestT11Ionice:
-    """Process.ionice() via Win32 NtQueryInformationProcess."""
+    """Process.ionice() — POSIX interface mapped to Win32 priorities."""
 
-    def test_get_returns_int(self):
+    def test_get_returns_pionice(self):
         result = psutil.Process().ionice()
-        assert isinstance(result, int)
+        assert hasattr(result, 'ioclass')
+        assert hasattr(result, 'value')
 
-    def test_value_in_range(self):
+    def test_ioclass_is_valid(self):
         result = psutil.Process().ionice()
-        assert 0 <= result <= 4, f"ionice={result} not in [0,4]"
+        assert result.ioclass in (
+            psutil.IOPRIO_CLASS_NONE,
+            psutil.IOPRIO_CLASS_RT,
+            psutil.IOPRIO_CLASS_BE,
+            psutil.IOPRIO_CLASS_IDLE,
+        )
+
+    def test_set_and_get(self):
+        p = psutil.Process()
+        orig = p.ionice()
+        try:
+            p.ionice(psutil.IOPRIO_CLASS_IDLE)
+            result = p.ionice()
+            assert result.ioclass == psutil.IOPRIO_CLASS_IDLE
+        finally:
+            p.ionice(orig.ioclass, orig.value)
 
     def test_nonexistent_pid(self):
         with pytest.raises(psutil.NoSuchProcess):

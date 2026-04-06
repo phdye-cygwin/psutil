@@ -96,7 +96,7 @@ pio = namedtuple(
 )
 puids = namedtuple('puids', ['real', 'effective', 'saved'])
 pgids = namedtuple('pgids', ['real', 'effective', 'saved'])
-pfile = namedtuple('pfile', ['path', 'fd'])
+from ._common import popenfile as pfile
 sswap = namedtuple(
     'sswap', ['total', 'used', 'free', 'percent', 'sin', 'sout']
 )
@@ -161,11 +161,8 @@ scputimes_per_cpu = namedtuple(
     ],
 )
 
-# Disk partition namedtuple - FIXED for posix/002 test
-sdiskpart = namedtuple('sdiskpart', ['device', 'mountpoint', 'fstype', 'opts'])
-
-# Disk usage namedtuple
-sdiskusage = namedtuple('sdiskusage', ['total', 'used', 'free', 'percent'])
+from ._common import sdiskpart
+from ._common import sdiskusage
 
 # =====================================================================
 # --- globals
@@ -225,7 +222,7 @@ TCP_STATUSES = {
 
 
 def net_connections(kind='inet'):
-    """Return system-wide network connections via Win32 GetTcpTable/GetUdpTable.
+    """Return system-wide network connections .
 
     Cygwin has no /proc/net/tcp. Uses iphlpapi.dll via ctypes.
     """
@@ -439,7 +436,7 @@ def net_if_stats():
 
 
 def net_io_counters():
-    """Return network I/O counters via Win32 GetIfTable (iphlpapi.dll).
+    """Return network I/O counters .
 
     Returns a dict of {name: snetio} as __init__.py expects.
     Uses ctypes to avoid WinSock header contamination in the C layer.
@@ -672,7 +669,7 @@ def cpu_count_cores():
 
 
 def cpu_stats():
-    """Return CPU statistics from /proc/stat + Win32.
+    """Return CPU statistics .
 
     /proc/stat provides interrupts. Win32 NtQuerySystemInformation
     provides context switches and syscalls (more accurate than /proc
@@ -948,12 +945,10 @@ def sensors_battery():
 
 
 def pids():
-    """Return list of PIDs.
-
-    Merges the Cygwin process table (via C extension) with /proc
-    enumeration. The C extension's cygwin_internal(CW_GETPINFO) skips
-    zombie processes, but /proc still has entries for them.
-    """
+    """Return a list of PIDs currently running on the system."""
+    # Merge two sources: cygwin_internal(CW_GETPINFO) via C extension
+    # skips zombie processes, but /proc readdir includes them (though
+    # /proc readdir also skips some zombies — see cygwin issue).
     try:
         result = set(cext.pids())
     except (AttributeError, OSError):
@@ -1162,7 +1157,7 @@ class Process:
         critical for PID reuse detection. Falls back to Cygwin's
         /proc-based time_t (1-second resolution) if Win32 call fails
         for a process that is still alive (e.g., system processes that
-        can't be opened via Win32). If both Win32 and os.kill fail,
+        can't be opened). If both Win32 and os.kill fail,
         the process is genuinely dead — raise NoSuchProcess even if
         /proc/[pid]/ still has stale data.
         """
@@ -1448,7 +1443,7 @@ class Process:
 
     @wrap_exceptions
     def num_threads(self):
-        """Return number of threads via Win32 thread snapshot."""
+        """Return number of threads ."""
         return len(cext.proc_threads(self.pid))
 
     @wrap_exceptions
@@ -1474,7 +1469,7 @@ class Process:
 
     @wrap_exceptions
     def io_counters(self):
-        """Return I/O counters via Win32 GetProcessIoCounters."""
+        """Return I/O counters ."""
         # Win32 returns (read_count, write_count, read_bytes, write_bytes,
         #                other_count, other_bytes)
         try:
