@@ -36,7 +36,10 @@ def main():
                 # ENOENT, pop-up a Windows GUI error for a non-ready
                 # partition or just hang.
                 continue
-        usage = psutil.disk_usage(part.mountpoint)
+        try:
+            usage = psutil.disk_usage(part.mountpoint)
+        except PermissionError:
+            continue
         line = templ.format(
             part.device,
             bytes2human(usage.total),
