@@ -1104,18 +1104,29 @@ class Process:
         Reads /proc/[pid]/stat field 3 (single letter) which is more
         accurate than the Cygwin process table — the process table
         doesn't clear PID_STOPPED after SIGCONT.
+
+        If /proc/[pid]/stat is gone, the process is dead — raise
+        NoSuchProcess rather than falling through to the C extension
+        which can return stale 'running' from the process table.
         """
         try:
             with open(f'/proc/{self.pid}/stat', 'rb') as f:
                 data = f.read()
+        except FileNotFoundError:
+            raise NoSuchProcess(self.pid)
+        except (OSError, ValueError):
+            # Permission or other transient error — fall through
+            code = cext.proc_status(self.pid)
+            return PROC_STATUSES.get(code, '?')
+        try:
             # Field 3 is after "(comm) " — find the closing paren
             i = data.rfind(b') ')
             if i != -1:
                 letter = chr(data[i + 2])
                 return PROC_STATUSES_LETTER.get(letter, '?')
-        except (OSError, IndexError, ValueError):
+        except (IndexError, ValueError):
             pass
-        # Fallback to C extension
+        # Parse failed — fall back to C extension
         code = cext.proc_status(self.pid)
         return PROC_STATUSES.get(code, '?')
 
