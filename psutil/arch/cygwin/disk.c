@@ -3,7 +3,7 @@
  * Use of this source code is governed by a BSD-style license that can be
  * found in the LICENSE file.
  *
- * Cygwin platform C extension - Disk Operations (Phase 5.1)
+ * Cygwin platform C extension - Disk Operations
  * This file implements disk-related functions for Cygwin.
  */
 

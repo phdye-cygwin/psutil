@@ -4,7 +4,7 @@
  * found in the LICENSE file.
  *
  * Windows API implementation stubs for Cygwin platform
- * FIXED: Added proper parameter validation and basic functionality
+ * Added proper parameter validation and basic functionality
  */
 
 #include <Python.h>
@@ -22,7 +22,7 @@
 /*
  * Parse /proc/net/tcp and /proc/net/udp to get network connections
  * This provides basic functionality using Linux-style /proc filesystem
- * FIXED: Added basic network connection detection
+ * Added basic network connection detection
  */
 static PyObject *
 parse_proc_net_file(const char *filename, const char *protocol)
@@ -128,7 +128,7 @@ parse_proc_net_file(const char *filename, const char *protocol)
 
 /*
  * Implementation of net_connections using /proc filesystem
- * FIXED: Added basic network connection detection instead of just empty list
+ * Added basic network connection detection instead of just empty list
  */
 PyObject *
 psutil_net_connections_win32(PyObject *self, PyObject *args)
@@ -190,7 +190,7 @@ psutil_net_connections_win32(PyObject *self, PyObject *args)
 
 /*
  * Implementation of per-process net_connections using /proc filesystem
- * FIXED: Added basic process-specific network connection detection
+ * Added basic process-specific network connection detection
  */
 PyObject *
 psutil_proc_net_connections_win32(PyObject *self, PyObject *args)
@@ -236,7 +236,7 @@ psutil_proc_net_connections_win32(PyObject *self, PyObject *args)
 /*
  * Windows getpagesize implementation
  * Returns system page size using sysconf if available
- * FIXED: Better implementation using actual system call
+ * Better implementation using actual system call
  */
 PyObject *
 psutil_getpagesize_win32(PyObject *self, PyObject *args)
@@ -256,7 +256,7 @@ psutil_getpagesize_win32(PyObject *self, PyObject *args)
 
 /*
  * Windows initialization stub
- * FIXED: Added basic initialization
+ * Added basic initialization
  */
 int
 psutil_win32_init(void)
