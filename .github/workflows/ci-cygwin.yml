@@ -40,22 +40,22 @@ jobs:
           packages: |
             gcc-core
             make
-            python3
-            python3-devel
-            python3-pip
-            python3-setuptools
-            python3-wheel
+            python312
+            python312-devel
+            python312-pip
+            python312-setuptools
+            python312-wheel
             git
 
       - name: Build environment
         run: >
-          echo "GCC=$(gcc -dumpfullversion) Python=$(python3 --version) Cygwin=$(uname -r) CWD=$(pwd)"
+          echo "GCC=$(gcc -dumpfullversion) Python=$(python3.12 --version) Cygwin=$(uname -r) CWD=$(pwd)"
 
       - name: Install test dependencies
-        run: python3 -m pip install --upgrade pip && python3 -m pip install '.[test]'
+        run: python3.12 -m pip install --upgrade pip && python3.12 -m pip install '.[test]'
 
       - name: Build psutil C extension
-        run: make build PYTHON=python3
+        run: make build PYTHON=python3.12
 
       - name: Run cross-platform test suite
         env:
@@ -63,7 +63,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
           PSUTIL_DEBUG: "1"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: make test PYTHON=python3
+        run: make test PYTHON=python3.12
 
       - name: Run Cygwin-specific test suite
         env:
@@ -71,4 +71,4 @@ jobs:
           PYTHONUNBUFFERED: "1"
           PSUTIL_DEBUG: "1"
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: make test-platform PYTHON=python3
+        run: make test-platform PYTHON=python3.12
