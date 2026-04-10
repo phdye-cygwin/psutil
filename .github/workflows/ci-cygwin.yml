@@ -1,0 +1,74 @@
+# Cygwin CI for the phdye-cygwin psutil port.
+#
+# This workflow is owned by the port; upstream ci in build.yml/bsd.yml is not
+# modified. It runs on windows-latest with a full Cygwin install and exercises
+# the Cygwin platform implementation in psutil/arch/cygwin/ plus the cross-
+# platform test suite.
+name: CI (Cygwin)
+
+on:
+  push:
+    branches: [cygwin/v7.1.0, ci/fork]
+  pull_request:
+    branches: [cygwin/v7.1.0]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cygwin:
+    runs-on: windows-latest
+    name: windows-latest / cygwin python3
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: C:\cygwin\bin\bash.exe --noprofile --norc -o igncr -eo pipefail '{0}'
+
+    steps:
+      - run: git config --global core.autocrlf input
+        shell: bash
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: cygwin/cygwin-install-action@8be4a7277a684c177c0fefca7d75c9c24a45055e # v6
+        with:
+          packages: |
+            gcc-core
+            make
+            python3
+            python3-devel
+            python3-pip
+            python3-setuptools
+            python3-wheel
+            git
+
+      - name: Build environment
+        run: >
+          echo "GCC=$(gcc -dumpfullversion) Python=$(python3 --version) Cygwin=$(uname -r) CWD=$(pwd)"
+
+      - name: Install test dependencies
+        run: python3 -m pip install --upgrade pip && python3 -m pip install '.[test]'
+
+      - name: Build psutil C extension
+        run: make build PYTHON=python3
+
+      - name: Run cross-platform test suite
+        env:
+          PYTHONWARNINGS: always
+          PYTHONUNBUFFERED: "1"
+          PSUTIL_DEBUG: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: make test PYTHON=python3
+
+      - name: Run Cygwin-specific test suite
+        env:
+          PYTHONWARNINGS: always
+          PYTHONUNBUFFERED: "1"
+          PSUTIL_DEBUG: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: make test-platform PYTHON=python3

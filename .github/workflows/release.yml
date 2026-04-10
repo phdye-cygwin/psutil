@@ -1,0 +1,113 @@
+# Cygwin release workflow for the phdye-cygwin psutil port.
+#
+# Triggers on *-cygwin tag pushes (e.g. v7.1.0-cygwin). Builds the wheel,
+# attaches it to a GitHub Release, and generates release notes from the
+# build environment. PEP 503 index and PyPI uploads can be added later.
+#
+# NOTE: This file must also live on the default branch (main) for GitHub
+# to discover the tag-triggered workflow. Keep a copy there and update it
+# whenever the cygwin/* branch version changes.
+name: Release (Cygwin)
+
+on:
+  push:
+    tags: ["*-cygwin"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    name: Build and publish Cygwin x86_64 wheel
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: C:\cygwin\bin\bash.exe --noprofile --norc -o igncr -eo pipefail '{0}'
+
+    steps:
+      - run: git config --global core.autocrlf input
+        shell: bash
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: cygwin/cygwin-install-action@8be4a7277a684c177c0fefca7d75c9c24a45055e # v6
+        with:
+          packages: |
+            gcc-core
+            make
+            python3
+            python3-devel
+            python3-pip
+            python3-setuptools
+            python3-wheel
+            python3-build
+            git
+
+      - name: Build environment
+        run: >
+          echo "GCC=$(gcc -dumpfullversion) Python=$(python3 --version) Cygwin=$(uname -r) CWD=$(pwd)"
+
+      - name: Build wheel
+        run: >
+          python3 -m pip install --upgrade pip build
+          && python3 -m build --wheel --outdir dist
+
+      - name: Locate wheel
+        id: wheel
+        run: |
+          wheel=$(ls dist/psutil-*.whl | head -1)
+          echo "path=$wheel" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$wheel")" >> "$GITHUB_OUTPUT"
+          ls -l "$wheel"
+
+      - name: Checksum
+        run: sha256sum "${{ steps.wheel.outputs.path }}" | tee checksums-sha256.txt
+
+      - name: Create release notes
+        run: >
+          printf '%s\n'
+          "Pre-built wheel for psutil on Cygwin x86_64."
+          ""
+          "**Build environment**: GCC $(gcc -dumpfullversion), $(python3 --version), Cygwin $(uname -r)"
+          "**Wheel**: \`${{ steps.wheel.outputs.name }}\`"
+          ""
+          "## Installation"
+          ""
+          "Direct install from this release:"
+          ""
+          "\`\`\`bash"
+          "pip install https://github.com/phdye-cygwin/psutil/releases/download/$GITHUB_REF_NAME/${{ steps.wheel.outputs.name }}"
+          "\`\`\`"
+          ""
+          "Or via the Cygwin Python package index:"
+          ""
+          "\`\`\`bash"
+          "pip install --extra-index-url https://phdye-cygwin.github.io/pypi/ psutil"
+          "\`\`\`"
+          ""
+          "Verify checksum:"
+          ""
+          "\`\`\`bash"
+          "sha256sum -c checksums-sha256.txt"
+          "\`\`\`"
+          ""
+          "## Dependency chain"
+          ""
+          "    psutil <- pypinfo <- grpcio <- protobuf <- abseil-cpp"
+          ""
+          "psutil sits at the root of the phdye-cygwin Python dependency chain."
+          > release-notes.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --title "psutil ${GITHUB_REF_NAME%-cygwin} — Cygwin x86_64"
+          --notes-file release-notes.md
+          "${{ steps.wheel.outputs.path }}" checksums-sha256.txt
