@@ -40,22 +40,21 @@ jobs:
           packages: |
             gcc-core
             make
-            python3
-            python3-devel
-            python3-pip
-            python3-setuptools
-            python3-wheel
-            python3-build
+            python312
+            python312-devel
+            python312-pip
+            python312-setuptools
+            python312-wheel
             git
 
       - name: Build environment
         run: >
-          echo "GCC=$(gcc -dumpfullversion) Python=$(python3 --version) Cygwin=$(uname -r) CWD=$(pwd)"
+          echo "GCC=$(gcc -dumpfullversion) Python=$(python3.12 --version) Cygwin=$(uname -r) CWD=$(pwd)"
 
       - name: Build wheel
         run: >
-          python3 -m pip install --upgrade pip build
-          && python3 -m build --wheel --outdir dist
+          python3.12 -m pip install --upgrade pip build
+          && python3.12 -m build --wheel --outdir dist
 
       - name: Locate wheel
         id: wheel
