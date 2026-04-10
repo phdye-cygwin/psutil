@@ -47,6 +47,13 @@ jobs:
             python312-wheel
             git
 
+      - name: Trust repo for Cygwin git
+        # Cygwin git refuses the checkout with "dubious ownership" on
+        # Windows runners unless the path is marked safe. Must run
+        # AFTER cygwin-install-action since defaults.run.shell points
+        # at C:\cygwin\bin\bash.exe.
+        run: git config --global --add safe.directory "$(pwd)"
+
       - name: Build environment
         run: >
           echo "GCC=$(gcc -dumpfullversion) Python=$(python3.12 --version) Cygwin=$(uname -r) CWD=$(pwd)"
