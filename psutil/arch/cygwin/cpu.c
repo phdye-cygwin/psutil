@@ -18,6 +18,7 @@
 #include <sys/stat.h>
 #include <sys/sysinfo.h>
 #ifdef __CYGWIN__
+#include <windows.h>
 #include <sysinfoapi.h>
 #endif
 
@@ -68,16 +69,28 @@ psutil_cpu_count_logical(PyObject *self, PyObject *args)
     return NULL;
 }
 
-// Parse /proc/cpuinfo to get CPU core information
+// Parse /proc/cpuinfo counting unique (physical_id, core_id) pairs.
+// Each unique pair identifies one physical core; hyperthreading places
+// multiple logical CPUs under the same pair, so deduplication yields
+// the physical core count.
+//
+// The earlier implementation multiplied `physical_cores * cpu_cores`,
+// which breaks inside hypervisors that leak the host CPU's topology
+// via CPUID: `cpu cores` then reports the host's physical cores (e.g.
+// 16) while the VM only has four logical CPUs assigned, giving
+// logical=4 and "cores"=16 — impossible.
 static int
 parse_proc_cpuinfo_cores(void)
 {
     FILE *file = NULL;
     char buffer[1024];
     char key[64], value[256];
-    int physical_cores = 0;
-    int last_physical_id = -1;
-    int core_count = 0;
+
+#define MAX_CORE_PAIRS 256
+    unsigned int pairs[MAX_CORE_PAIRS];
+    int pair_count = 0;
+    int current_physical_id = -1;
+    int current_core_id = -1;
 
     file = fopen("/proc/cpuinfo", "r");
     if (file == NULL) {
@@ -85,6 +98,28 @@ parse_proc_cpuinfo_cores(void)
     }
 
     while (fgets(buffer, sizeof (buffer), file)) {
+        // Record the current (physical_id, core_id) pair when we hit a
+        // blank line or the start of a new "processor" entry.
+        if (buffer[0] == '\n' ||
+            (strncmp(buffer, "processor", 9) == 0 &&
+             (buffer[9] == '\t' || buffer[9] == ' ' || buffer[9] == ':'))) {
+            if (current_physical_id >= 0 && current_core_id >= 0) {
+                unsigned int pair =
+                    ((unsigned)current_physical_id << 16) |
+                    (unsigned)(current_core_id & 0xFFFF);
+                int found = 0;
+                for (int i = 0; i < pair_count; i++) {
+                    if (pairs[i] == pair) { found = 1; break; }
+                }
+                if (!found && pair_count < MAX_CORE_PAIRS) {
+                    pairs[pair_count++] = pair;
+                }
+            }
+            current_physical_id = -1;
+            current_core_id = -1;
+            continue;
+        }
+
         if (sscanf(buffer, "%63[^:]: %255[^\n]", key, value) == 2) {
             // Trim whitespace from key
             char *key_trimmed = key;
@@ -96,27 +131,71 @@ parse_proc_cpuinfo_cores(void)
             }
 
             if (strcmp(key_trimmed, "physical id") == 0) {
-                int physical_id = atoi(value);
-                if (physical_id > last_physical_id) {
-                    last_physical_id = physical_id;
-                    physical_cores = physical_id + 1;
-                }
+                current_physical_id = atoi(value);
             }
-            else if (strcmp(key_trimmed, "cpu cores") == 0) {
-                core_count = atoi(value);
+            else if (strcmp(key_trimmed, "core id") == 0) {
+                current_core_id = atoi(value);
             }
+        }
+    }
+
+    // Flush the last entry (file may not end with a blank line).
+    if (current_physical_id >= 0 && current_core_id >= 0) {
+        unsigned int pair =
+            ((unsigned)current_physical_id << 16) |
+            (unsigned)(current_core_id & 0xFFFF);
+        int found = 0;
+        for (int i = 0; i < pair_count; i++) {
+            if (pairs[i] == pair) { found = 1; break; }
+        }
+        if (!found && pair_count < MAX_CORE_PAIRS) {
+            pairs[pair_count++] = pair;
         }
     }
 
     fclose(file);
 
-    // If we found physical CPU info, use cores per physical CPU
-    if (physical_cores > 0 && core_count > 0) {
-        return physical_cores * core_count;
-    }
-
-    return -1;
+    return pair_count > 0 ? pair_count : -1;
+#undef MAX_CORE_PAIRS
 }
+
+#ifdef __CYGWIN__
+// Count physical cores via GetLogicalProcessorInformationEx, which
+// reports the cores actually visible to the calling process and is
+// correct under hypervisor/VM isolation (unlike /proc/cpuinfo, which
+// mirrors CPUID and can leak host topology).
+static int
+win32_cpu_count_cores(void)
+{
+    DWORD bufsize = 0;
+    GetLogicalProcessorInformationEx(RelationProcessorCore, NULL, &bufsize);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || bufsize == 0) {
+        return -1;
+    }
+    SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *buf =
+        (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *)malloc(bufsize);
+    if (buf == NULL) {
+        return -1;
+    }
+    if (!GetLogicalProcessorInformationEx(RelationProcessorCore, buf, &bufsize)) {
+        free(buf);
+        return -1;
+    }
+    int cores = 0;
+    DWORD offset = 0;
+    while (offset < bufsize) {
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *info =
+            (SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX *)((char *)buf + offset);
+        if (info->Relationship == RelationProcessorCore) {
+            cores++;
+        }
+        if (info->Size == 0) break;  // guard against malformed output
+        offset += info->Size;
+    }
+    free(buf);
+    return cores > 0 ? cores : -1;
+}
+#endif
 
 // Get the number of physical CPU cores
 PyObject *
@@ -124,24 +203,19 @@ psutil_cpu_count_cores(PyObject *self, PyObject *args)
 {
     int cores;
 
-    // Try to parse from /proc/cpuinfo
+#ifdef __CYGWIN__
+    // Primary: Windows API, authoritative under virtualization.
+    cores = win32_cpu_count_cores();
+    if (cores > 0) {
+        return Py_BuildValue("i", cores);
+    }
+#endif
+
+    // Fallback: parse /proc/cpuinfo counting unique (physical, core) pairs.
     cores = parse_proc_cpuinfo_cores();
     if (cores > 0) {
         return Py_BuildValue("i", cores);
     }
-
-    // Fallback: assume logical CPUs are the same as physical cores
-    long ncpus = sysconf(_SC_NPROCESSORS_ONLN);
-    if (ncpus != -1) {
-        return Py_BuildValue("i", (int)ncpus);
-    }
-
-#ifdef __CYGWIN__
-    // Windows fallback
-    SYSTEM_INFO sysinfo;
-    GetSystemInfo(&sysinfo);
-    return Py_BuildValue("i", (int)sysinfo.dwNumberOfProcessors);
-#endif
 
     // Return None if we can't determine core count
     Py_INCREF(Py_None);
