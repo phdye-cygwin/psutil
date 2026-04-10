@@ -75,6 +75,190 @@
         <a href="https://github.com/giampaolo/psutil/blob/master/HISTORY.rst"><b>What's new</b></a>&nbsp;&nbsp;&nbsp;
     </div>
 
+Cygwin Port (``cygwin/v7.1.0`` branch)
+======================================
+
+This branch adds Cygwin support to psutil 7.1.0.
+
+psutil does not officially support Cygwin. This branch adds a complete
+Cygwin platform implementation (``psutil/_pscygwin.py``,
+``psutil/_psutil_cygwin.c``, and ``psutil/arch/cygwin/``) alongside the
+existing Linux, Windows, macOS, BSD, Solaris, and AIX platforms. The
+implementation is a hybrid: POSIX APIs for sockets and process
+enumeration, selective Windows APIs (via ``iphlpapi.dll`` and
+``psapi.dll``) for network connections and Windows-accurate memory
+metrics. A dedicated ``psutil/tests/test_cygwin.py`` guards the
+Cygwin-specific paths alongside the existing cross-platform suite. The
+patches are intended as a stopgap until upstream support exists.
+
+This port exists to support ``pypinfo`` (PyPI download statistics) on
+Cygwin, which is part of the dependency chain for ``grpcio`` (Python
+gRPC bindings)::
+
+    psutil <- pypinfo <- grpcio <- protobuf <- abseil-cpp
+
+Every port in the chain includes the same dependency diagram.
+
+Prerequisites
+-------------
+
+- Cygwin x86_64 with ``gcc-core``, ``make``, ``python3``, ``python3-devel``
+- ``pip install -e .[test,dev]`` for test and development dependencies
+
+Building on Cygwin
+------------------
+
+.. code-block:: bash
+
+    make build            # compile C extensions in-place
+    make install          # build + install in develop mode
+    make test             # run the test suite (skipping memleak/sudo)
+    make test-platform    # run the Cygwin-specific tests
+
+Binary release
+--------------
+
+Pre-built wheels for Cygwin x86_64 are available on the `Releases
+<https://github.com/phdye-cygwin/psutil/releases>`__ page. Install
+directly:
+
+.. code-block:: bash
+
+    pip install https://github.com/phdye-cygwin/psutil/releases/download/v7.1.0-cygwin/psutil-7.1.0-cp312-cp312-cygwin_3_6_7_x86_64.whl
+
+Or via the Cygwin Python package index:
+
+.. code-block:: bash
+
+    pip install --extra-index-url https://phdye-cygwin.github.io/pypi/ psutil
+
+Patch summary
+-------------
+
+**Fixes (24 files)** -- Cygwin platform implementation and cross-platform
+dispatch.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - File
+     - Purpose
+   * - ``psutil/__init__.py``
+     - Add Cygwin to platform dispatch
+   * - ``psutil/_common.py``
+     - Cygwin detection constant
+   * - ``psutil/_pscygwin.py``
+     - Cygwin platform module (Python wrapper)
+   * - ``psutil/_psutil_cygwin.c``
+     - Cygwin C extension entry point
+   * - ``psutil/arch/all/init.h``
+     - Shared C init header update
+   * - ``psutil/arch/cygwin/cpu.c``
+     - CPU times, stats, frequency
+   * - ``psutil/arch/cygwin/disk.c``
+     - Disk usage and partitions
+   * - ``psutil/arch/cygwin/init.c``
+     - Cygwin C extension initialization
+   * - ``psutil/arch/cygwin/init.h``
+     - Cygwin init header
+   * - ``psutil/arch/cygwin/io.c``
+     - Process I/O counters
+   * - ``psutil/arch/cygwin/mem.c``
+     - Memory metrics and maps (with surrogateescape handling)
+   * - ``psutil/arch/cygwin/net.c``
+     - Network interface stats
+   * - ``psutil/arch/cygwin/net_connections.c``
+     - Net connections via iphlpapi (IPv4+IPv6, Win32→Cygwin PID xlat)
+   * - ``psutil/arch/cygwin/proc.c``
+     - Process enumeration and attributes
+   * - ``psutil/arch/cygwin/psutil_cygwin.h``
+     - Shared Cygwin header
+   * - ``psutil/arch/cygwin/system.c``
+     - System-level metrics (boot time, users)
+   * - ``psutil/arch/cygwin/win32.c``
+     - Selective Win32 APIs for Windows-accurate data
+   * - ``psutil/arch/cygwin/win32_apis.c``
+     - Win32 error→Python exception translation (ERROR_ACCESS_DENIED etc.)
+   * - ``psutil/arch/cygwin/posix_compat.h``
+     - POSIX compatibility header
+   * - ``psutil/arch/cygwin/posix/*.h``
+     - POSIX header shims (netdb, netinet/in, sys/socket)
+   * - ``psutil/arch/cygwin/posix_wrappers/*.c``
+     - POSIX API wrappers (init, net, proc, sysctl, users)
+   * - ``scripts/disk_usage.py``
+     - Handle ``PermissionError`` on inaccessible drives
+   * - ``scripts/procsmem.py``
+     - Add Cygwin to supported platform check
+
+**Regression tests (9 files)** -- test adaptations and Cygwin-specific
+additions.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - File
+     - Purpose
+   * - ``psutil/tests/__init__.py``
+     - 2x ``GLOBAL_TIMEOUT`` on Cygwin; add ``ROOT_DIR`` to ``PYTHONPATH`` for subprocess tests
+   * - ``psutil/tests/test_cygwin.py``
+     - Cygwin-specific test file
+   * - ``psutil/tests/test_connections.py``
+     - Skip UNIX socket tests (Cygwin cannot enumerate)
+   * - ``psutil/tests/test_contracts.py``
+     - Contract tests for Cygwin platform
+   * - ``psutil/tests/test_process.py``
+     - Cygwin-specific process test branches
+   * - ``psutil/tests/test_process_all.py``
+     - ``ionice`` validation for Cygwin (Linux convention)
+   * - ``psutil/tests/test_system.py``
+     - Cygwin-specific system test branches
+   * - ``psutil/tests/test_testutils.py``
+     - Skip UNIX socketpair on Cygwin
+   * - ``psutil/tests/test_unicode.py``
+     - Skip UNIX socket enumeration tests
+
+**Build and docs (4 files)** -- build system and repo hygiene.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - File
+     - Purpose
+   * - ``setup.py``
+     - Cygwin detection and build config for C extension
+   * - ``Makefile``
+     - Cygwin platform detection for ``test-platform`` target
+   * - ``.gitattributes``
+     - Line ending and permission-bit normalization
+   * - ``.gitignore``
+     - Cygwin-specific build artifacts
+
+Known limitations
+-----------------
+
+- **UNIX socket enumeration**: Cygwin's ``/proc/net/unix`` does not
+  expose UNIX-domain sockets, so ``net_connections(kind='unix')``
+  returns empty. Affected tests are skipped.
+- **Process iteration is slower than Linux**: each ``/proc/<pid>/stat``
+  read crosses the Cygwin POSIX/Win32 boundary. ``GLOBAL_TIMEOUT`` is
+  doubled on Cygwin to accommodate this.
+- **DLL rebase after build**: the Cygwin extension DLL must sometimes
+  be rebased after ``make build`` to avoid ``fork()`` address space
+  collisions. Run ``rebaseall`` or pass ``--image-base`` if you see
+  fork failures in the test suite.
+
+Test results
+------------
+
+Cygwin-specific test failures have been resolved; the full test suite
+passes on Cygwin x86_64 modulo optional maintainer-only dependencies
+(``pyperf``, ``requests``, ``pypinfo``) used by ``test_import_all``.
+
+-----
+
 Summary
 =======
 
