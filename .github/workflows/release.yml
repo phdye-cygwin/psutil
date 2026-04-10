@@ -35,6 +35,9 @@ jobs:
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      - name: Trust repo for Cygwin git
+        run: git config --global --add safe.directory "$(pwd)"
+
       - uses: cygwin/cygwin-install-action@8be4a7277a684c177c0fefca7d75c9c24a45055e # v6
         with:
           packages: |
