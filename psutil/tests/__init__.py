@@ -959,6 +959,7 @@ if WINDOWS:
     ]
     _GetLongPathNameW.restype = ctypes.c_uint32
 
+    @memoize
     def _resolve_short_names(path):
         if not path:
             return path
@@ -969,6 +970,35 @@ if WINDOWS:
         # GetLongPathNameW fails (returns 0) if the path does not
         # exist or cannot be opened. Fall back to the input.
         return path
+
+elif CYGWIN:
+    # Cygwin Python is a POSIX runtime with no `ctypes.windll`, so
+    # GetLongPathNameW cannot be called directly. Instead shell out
+    # to cygpath: `-w -l` emits the Windows long form of a POSIX
+    # path, and `-u` converts the resulting Windows path back to
+    # POSIX. Both stages run through the Windows kernel's long-name
+    # resolver, which expands 8.3 components like `RUNNER~1` to
+    # `runneradmin`. Memoized because subprocess spawn on Cygwin is
+    # expensive and tests repeat paths.
+    @memoize
+    def _resolve_short_names(path):
+        if not path:
+            return path
+        try:
+            win_long = subprocess.check_output(
+                ['cygpath', '-w', '-l', path],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+            if not win_long:
+                return path
+            return subprocess.check_output(
+                ['cygpath', '-u', win_long],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+        except (subprocess.SubprocessError, OSError):
+            return path
 
 else:
 
