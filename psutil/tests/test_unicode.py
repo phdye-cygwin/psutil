@@ -275,12 +275,17 @@ class TestFSAPIs(BaseUnicodeTest):
     def test_memory_maps(self):
         with copyload_shared_lib(suffix=self.funky_suffix) as funky_path:
             libpaths = [
-                normpath(x.path) for x in psutil.Process().memory_maps()
+                x.path for x in psutil.Process().memory_maps()
             ]
-            # ...just to have a clearer msg in case of failure
-            libpaths = [x for x in libpaths if TESTFN_PREFIX in x]
-            assert normpath(funky_path) in libpaths
-            for path in libpaths:
+            matches = [
+                x for x in libpaths
+                if os.path.exists(x) and os.path.samefile(x, funky_path)
+            ]
+            assert matches, (
+                f"{funky_path!r} not found in "
+                f"{[x for x in libpaths if TESTFN_PREFIX in x]!r}"
+            )
+            for path in matches:
                 assert isinstance(path, str)
 
 

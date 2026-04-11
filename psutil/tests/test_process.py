@@ -679,11 +679,18 @@ class TestProcess(PsutilTestCase):
 
     @pytest.mark.skipif(not HAS_MEMORY_MAPS, reason="not supported")
     def test_memory_maps_lists_lib(self):
-        # Make sure a newly loaded shared lib is listed.
+        # Make sure a newly loaded shared lib is listed. Compare by
+        # inode via samefile() rather than by path string — paths can
+        # legitimately differ (8.3 short vs long, /cygdrive/c vs /c,
+        # case) while referring to the same file, and canonicalizing
+        # every variant is fragile.
         p = psutil.Process()
         with copyload_shared_lib() as path:
-            libpaths = [normpath(x.path) for x in p.memory_maps()]
-            assert normpath(path) in libpaths
+            libpaths = [x.path for x in p.memory_maps()]
+            assert any(
+                os.path.exists(lp) and os.path.samefile(lp, path)
+                for lp in libpaths
+            ), f"{path!r} not found in {libpaths!r}"
 
     def test_memory_percent(self):
         p = psutil.Process()
