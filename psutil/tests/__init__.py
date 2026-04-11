@@ -85,6 +85,7 @@ __all__ = [
     'is_win_secure_system_proc', 'fake_pytest',
     # fs utils
     'chdir', 'safe_rmpath', 'create_py_exe', 'create_c_exe', 'get_testfn',
+    'normpath',
     # os
     'get_winver', 'kernel_version',
     # sync primitives
@@ -943,6 +944,58 @@ def chdir(dirname):
         yield
     finally:
         os.chdir(curdir)
+
+
+if WINDOWS:
+    # GetLongPathNameW expands any 8.3 short-name path components to
+    # their long-name form. Used by normpath() below to reconcile
+    # paths that come from different sources (e.g. `%TEMP%` in short
+    # form vs psutil API output in canonical form).
+    _GetLongPathNameW = ctypes.windll.kernel32.GetLongPathNameW
+    _GetLongPathNameW.argtypes = [
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_uint32,
+    ]
+    _GetLongPathNameW.restype = ctypes.c_uint32
+
+    def _resolve_short_names(path):
+        if not path:
+            return path
+        buf = ctypes.create_unicode_buffer(32768)
+        n = _GetLongPathNameW(path, buf, 32768)
+        if 0 < n < 32768:
+            return buf.value
+        # GetLongPathNameW fails (returns 0) if the path does not
+        # exist or cannot be opened. Fall back to the input.
+        return path
+
+else:
+
+    def _resolve_short_names(path):
+        return path
+
+
+def normpath(path):
+    """Normalize a path for cross-source comparison in tests.
+
+    Applies `os.path.realpath` and `os.path.normcase`, then on
+    Windows resolves any 8.3 short-name components to their
+    long-name form via `GetLongPathNameW`.
+
+    Short-name expansion matters because Windows returns path
+    fragments like `C:\\Users\\RUNNER~1` whenever the containing
+    directory name exceeds 8 characters and 8.3 name generation is
+    enabled on the filesystem. This can surface in `%TEMP%`,
+    `%USERPROFILE%`, and similar environment variables - while
+    psutil's path APIs (`Process.cwd`, `Process.open_files`,
+    `Process.memory_maps`, ...) return the canonical long-name form
+    resolved via `NtQueryObject` / kernel-level canonicalization.
+    Comparing the two forms by string match fails even though they
+    refer to the same file. `normpath` exists so tests can
+    canonicalize both sides to a single comparable form.
+    """
+    return _resolve_short_names(os.path.normcase(os.path.realpath(path)))
 
 
 def create_py_exe(path):

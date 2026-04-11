@@ -43,6 +43,7 @@ from psutil.tests import fake_pytest
 from psutil.tests import filter_proc_net_connections
 from psutil.tests import get_free_port
 from psutil.tests import is_namedtuple
+from psutil.tests import normpath
 from psutil.tests import process_namespace
 from psutil.tests import pytest
 from psutil.tests import reap_children
@@ -212,8 +213,10 @@ class TestFSTestUtils(PsutilTestCase):
         base = os.getcwd()
         os.mkdir(testfn)
         with chdir(testfn):
-            assert os.getcwd() == os.path.join(base, testfn)
-        assert os.getcwd() == base
+            assert normpath(os.getcwd()) == normpath(
+                os.path.join(base, testfn)
+            )
+        assert normpath(os.getcwd()) == normpath(base)
 
 
 class TestProcessUtils(PsutilTestCase):

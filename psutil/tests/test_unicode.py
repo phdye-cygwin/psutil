@@ -94,6 +94,7 @@ from psutil.tests import chdir
 from psutil.tests import copyload_shared_lib
 from psutil.tests import create_py_exe
 from psutil.tests import get_testfn
+from psutil.tests import normpath
 from psutil.tests import pytest
 from psutil.tests import safe_mkdir
 from psutil.tests import safe_rmpath
@@ -175,7 +176,7 @@ class TestFSAPIs(BaseUnicodeTest):
         exe = p.exe()
         assert isinstance(exe, str)
         if self.expect_exact_path_match():
-            assert os.path.normcase(exe) == os.path.normcase(self.funky_name)
+            assert normpath(exe) == normpath(self.funky_name)
 
     def test_proc_name(self):
         cmd = [
@@ -212,7 +213,7 @@ class TestFSAPIs(BaseUnicodeTest):
             cwd = p.cwd()
         assert isinstance(p.cwd(), str)
         if self.expect_exact_path_match():
-            assert cwd == dname
+            assert normpath(cwd) == normpath(dname)
 
     @pytest.mark.skipif(PYPY and WINDOWS, reason="fails on PYPY + WINDOWS")
     @pytest.mark.skipif(
@@ -229,7 +230,7 @@ class TestFSAPIs(BaseUnicodeTest):
             # XXX - see https://github.com/giampaolo/psutil/issues/595
             raise pytest.skip("open_files on BSD is broken")
         if self.expect_exact_path_match():
-            assert os.path.normcase(path) == os.path.normcase(self.funky_name)
+            assert normpath(path) == normpath(self.funky_name)
 
     @pytest.mark.skipif(not POSIX, reason="POSIX only")
     @pytest.mark.skipif(CYGWIN, reason="UNIX socket enumeration unsupported")
@@ -273,10 +274,6 @@ class TestFSAPIs(BaseUnicodeTest):
     @pytest.mark.skipif(not HAS_MEMORY_MAPS, reason="not supported")
     def test_memory_maps(self):
         with copyload_shared_lib(suffix=self.funky_suffix) as funky_path:
-
-            def normpath(p):
-                return os.path.realpath(os.path.normcase(p))
-
             libpaths = [
                 normpath(x.path) for x in psutil.Process().memory_maps()
             ]
