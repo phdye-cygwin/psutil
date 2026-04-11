@@ -1252,6 +1252,13 @@ class TestProcess(PsutilTestCase):
         pid = max(table.items(), key=lambda x: x[1])[0]
         if LINUX and pid == 0:
             raise pytest.skip("PID 0")
+        # Cygwin reports ppid=1 for orphaned processes following the
+        # POSIX reparent-to-init convention, but does not expose pid=1
+        # as a visible process. Other platforms may have similar
+        # phantom top-level PIDs. Skip when the top-parent isn't a
+        # real, openable process.
+        if not psutil.pid_exists(pid):
+            raise pytest.skip(f"PID {pid} reported as parent but not visible")
         p = psutil.Process(pid)
         try:
             c = p.children(recursive=True)
