@@ -60,6 +60,7 @@ from . import call_until
 from . import copyload_shared_lib
 from . import create_c_exe
 from . import create_py_exe
+from . import normpath
 from . import process_namespace
 from . import pytest
 from . import reap_children
@@ -595,10 +596,6 @@ class TestProcess(PsutilTestCase):
         # Make sure a newly loaded shared lib is listed.
         p = psutil.Process()
         with copyload_shared_lib() as path:
-
-            def normpath(p):
-                return os.path.realpath(os.path.normcase(p))
-
             libpaths = [normpath(x.path) for x in p.memory_maps()]
             assert normpath(path) in libpaths
 
@@ -631,10 +628,10 @@ class TestProcess(PsutilTestCase):
         try:
             assert exe == PYTHON_EXE
         except AssertionError:
-            if WINDOWS and len(exe) == len(PYTHON_EXE):
-                # on Windows we don't care about case sensitivity
-                normcase = os.path.normcase
-                assert normcase(exe) == normcase(PYTHON_EXE)
+            if WINDOWS and normpath(exe) == normpath(PYTHON_EXE):
+                # on Windows we don't care about case sensitivity or
+                # 8.3 short-name form
+                pass
             else:
                 # certain platforms such as BSD are more accurate returning:
                 # "/usr/local/bin/python3.7"
@@ -956,8 +953,8 @@ class TestProcess(PsutilTestCase):
             # give the kernel some time to see the new file
             call_until(lambda: len(p.open_files()) != len(files))
             files = p.open_files()
-            filenames = [os.path.normcase(x.path) for x in files]
-            assert os.path.normcase(testfn) in filenames
+            filenames = [normpath(x.path) for x in files]
+            assert normpath(testfn) in filenames
             if LINUX:
                 for file in files:
                     if file.path == testfn:
@@ -973,12 +970,12 @@ class TestProcess(PsutilTestCase):
         p = self.spawn_psproc([PYTHON_EXE, "-c", cmdline])
 
         for x in range(100):
-            filenames = [os.path.normcase(x.path) for x in p.open_files()]
-            if testfn in filenames:
+            filenames = [normpath(x.path) for x in p.open_files()]
+            if normpath(testfn) in filenames:
                 break
             time.sleep(0.01)
         else:
-            assert os.path.normcase(testfn) in filenames
+            assert normpath(testfn) in filenames
         for file in filenames:
             assert os.path.isfile(file), file
 
@@ -987,18 +984,17 @@ class TestProcess(PsutilTestCase):
     def test_open_files_2(self):
         # test fd and path fields
         p = psutil.Process()
-        normcase = os.path.normcase
         testfn = self.get_testfn()
         with open(testfn, 'w') as fileobj:
             for file in p.open_files():
                 if (
-                    normcase(file.path) == normcase(fileobj.name)
+                    normpath(file.path) == normpath(fileobj.name)
                     or file.fd == fileobj.fileno()
                 ):
                     break
             else:
                 return pytest.fail(f"no file found; files={p.open_files()!r}")
-            assert normcase(file.path) == normcase(fileobj.name)
+            assert normpath(file.path) == normpath(fileobj.name)
             if WINDOWS:
                 assert file.fd == -1
             else:
