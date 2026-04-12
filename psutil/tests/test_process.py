@@ -376,10 +376,10 @@ class TestProcess(PsutilTestCase):
         if CYGWIN:
             # Lossy mapping: BE without value → Win32 Normal → reads
             # back as NONE (Win32 has 4 levels, can't distinguish)
-            assert p.ionice()[0] in (
+            assert p.ionice()[0] in {
                 psutil.IOPRIO_CLASS_BE,
                 psutil.IOPRIO_CLASS_NONE,
-            )
+            }
         else:
             assert tuple(p.ionice()) == (psutil.IOPRIO_CLASS_BE, 0)
         p.ionice(psutil.IOPRIO_CLASS_BE, value=7)

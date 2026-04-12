@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Copyright (c) 2009, Giampaolo Rodola'. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -20,9 +18,6 @@ import time
 from collections import namedtuple
 
 from . import _psposix
-from ._common import AccessDenied
-from ._common import NoSuchProcess
-from ._common import ZombieProcess
 from ._common import CONN_CLOSE
 from ._common import CONN_CLOSE_WAIT
 from ._common import CONN_CLOSING
@@ -35,9 +30,18 @@ from ._common import CONN_NONE
 from ._common import CONN_SYN_RECV
 from ._common import CONN_SYN_SENT
 from ._common import CONN_TIME_WAIT
+from ._common import STATUS_DEAD
+from ._common import STATUS_RUNNING
+from ._common import STATUS_SLEEPING
+from ._common import STATUS_STOPPED
+from ._common import STATUS_ZOMBIE
+from ._common import AccessDenied
+from ._common import NoSuchProcess
+from ._common import ZombieProcess
 from ._common import conn_to_ntuple
-from ._common import sockfam_to_enum
-from ._common import socktype_to_enum
+from ._common import popenfile as pfile
+from ._common import sdiskpart
+from ._common import sdiskusage
 
 # Import the C extension - this is REQUIRED for Cygwin support
 try:
@@ -110,7 +114,6 @@ pio = namedtuple(
 )
 puids = namedtuple('puids', ['real', 'effective', 'saved'])
 pgids = namedtuple('pgids', ['real', 'effective', 'saved'])
-from ._common import popenfile as pfile
 
 sswap = namedtuple(
     'sswap', ['total', 'used', 'free', 'percent', 'sin', 'sout']
@@ -187,9 +190,6 @@ scputimes_per_cpu = namedtuple(
     ],
 )
 
-from ._common import sdiskpart
-from ._common import sdiskusage
-
 # =====================================================================
 # --- globals
 # =====================================================================
@@ -198,15 +198,6 @@ HAS_PROC_IO_COUNTERS = True
 HAS_NET_IO_COUNTERS = True
 HAS_THREADS = True
 AF_LINK = None  # Not available on Cygwin
-
-# Process status mapping from C extension integer codes to psutil constants.
-# These codes are defined in arch/cygwin/proc.c psutil_proc_status():
-#   0 = running, 1 = sleeping (TTY I/O wait), 5 = stopped, 8 = zombie/exited
-from ._common import STATUS_DEAD
-from ._common import STATUS_RUNNING
-from ._common import STATUS_SLEEPING
-from ._common import STATUS_STOPPED
-from ._common import STATUS_ZOMBIE
 
 PROC_STATUSES = {
     0: STATUS_RUNNING,
@@ -264,18 +255,18 @@ def net_connections(kind='inet'):
     from ._common import addr
 
     connections = []
-    want_tcp4 = kind in ('inet', 'inet4', 'tcp', 'tcp4', 'all')
-    want_udp4 = kind in ('inet', 'inet4', 'udp', 'udp4', 'all')
-    want_tcp6 = kind in ('inet', 'inet6', 'tcp', 'tcp6', 'all')
-    want_udp6 = kind in ('inet', 'inet6', 'udp', 'udp6', 'all')
+    want_tcp4 = kind in {'inet', 'inet4', 'tcp', 'tcp4', 'all'}
+    want_udp4 = kind in {'inet', 'inet4', 'udp', 'udp4', 'all'}
+    want_tcp6 = kind in {'inet', 'inet6', 'tcp', 'tcp6', 'all'}
+    want_udp6 = kind in {'inet', 'inet6', 'udp', 'udp6', 'all'}
 
     try:
         iphlpapi = ctypes.CDLL('iphlpapi.dll')
     except OSError:
         return connections
 
-    _AF_INET = socket.AF_INET
-    _AF_INET6 = getattr(socket, 'AF_INET6', None)
+    AF_INET = socket.AF_INET
+    AF_INET6 = getattr(socket, 'AF_INET6', None)
 
     if want_tcp4:
         # GetExtendedTcpTable with TCP_TABLE_OWNER_PID_ALL (5)
@@ -302,7 +293,7 @@ def net_connections(kind='inet'):
                     raddr_t = addr(rip, rp) if (ra or rp) else ()
                     conn = conn_to_ntuple(
                         -1,
-                        _AF_INET,
+                        AF_INET,
                         socket.SOCK_STREAM,
                         laddr_t,
                         raddr_t,
@@ -312,7 +303,7 @@ def net_connections(kind='inet'):
                     )
                     connections.append(conn)
 
-    if want_tcp6 and _AF_INET6 is not None:
+    if want_tcp6 and AF_INET6 is not None:
         # GetExtendedTcpTable for AF_INET6 (23)
         size = c_ulong(0)
         iphlpapi.GetExtendedTcpTable(None, byref(size), 0, 23, 5, 0)
@@ -329,20 +320,20 @@ def net_connections(kind='inet'):
                     if off + 56 > len(raw):
                         break
                     la6 = raw[off : off + 16]
-                    lscope = unpack_from('<I', raw, off + 16)[0]
+                    unpack_from('<I', raw, off + 16)[0]
                     lp = socket.ntohs(unpack_from('<H', raw, off + 20)[0])
                     ra6 = raw[off + 24 : off + 40]
-                    rscope = unpack_from('<I', raw, off + 40)[0]
+                    unpack_from('<I', raw, off + 40)[0]
                     rp = socket.ntohs(unpack_from('<H', raw, off + 44)[0])
                     state = unpack_from('<I', raw, off + 48)[0]
                     pid = unpack_from('<I', raw, off + 52)[0]
-                    lip = socket.inet_ntop(_AF_INET6, la6)
-                    rip = socket.inet_ntop(_AF_INET6, ra6)
+                    lip = socket.inet_ntop(AF_INET6, la6)
+                    rip = socket.inet_ntop(AF_INET6, ra6)
                     laddr_t = addr(lip, lp)
                     raddr_t = addr(rip, rp) if any(ra6) or rp else ()
                     conn = conn_to_ntuple(
                         -1,
-                        _AF_INET6,
+                        AF_INET6,
                         socket.SOCK_STREAM,
                         laddr_t,
                         raddr_t,
@@ -372,7 +363,7 @@ def net_connections(kind='inet'):
                     laddr_t = addr(lip, lp)
                     conn = conn_to_ntuple(
                         -1,
-                        _AF_INET,
+                        AF_INET,
                         socket.SOCK_DGRAM,
                         laddr_t,
                         (),
@@ -382,7 +373,7 @@ def net_connections(kind='inet'):
                     )
                     connections.append(conn)
 
-    if want_udp6 and _AF_INET6 is not None:
+    if want_udp6 and AF_INET6 is not None:
         # GetExtendedUdpTable for AF_INET6 (23)
         size = c_ulong(0)
         iphlpapi.GetExtendedUdpTable(None, byref(size), 0, 23, 1, 0)
@@ -399,14 +390,14 @@ def net_connections(kind='inet'):
                     if off + 28 > len(raw):
                         break
                     la6 = raw[off : off + 16]
-                    lscope = unpack_from('<I', raw, off + 16)[0]
+                    unpack_from('<I', raw, off + 16)[0]
                     lp = socket.ntohs(unpack_from('<H', raw, off + 20)[0])
                     pid = unpack_from('<I', raw, off + 24)[0]
-                    lip = socket.inet_ntop(_AF_INET6, la6)
+                    lip = socket.inet_ntop(AF_INET6, la6)
                     laddr_t = addr(lip, lp)
                     conn = conn_to_ntuple(
                         -1,
-                        _AF_INET6,
+                        AF_INET6,
                         socket.SOCK_DGRAM,
                         laddr_t,
                         (),
@@ -564,7 +555,7 @@ def net_if_stats():
     from ._common import snicstats
 
     ret = {}
-    names = set(r[0] for r in net_if_addrs())
+    names = {r[0] for r in net_if_addrs()}
     for name in names:
         try:
             mtu = cext.net_if_mtu(name)
@@ -576,10 +567,8 @@ def net_if_stats():
                 duplex = NIC_DUPLEX_FULL
             else:
                 duplex = NIC_DUPLEX_UNKNOWN
-            if speed < 0:
-                speed = 0
-            if mtu < 0:
-                mtu = 0
+            speed = max(speed, 0)
+            mtu = max(mtu, 0)
             ret[name] = snicstats(isup, duplex, speed, mtu, '')
         except OSError:
             continue
@@ -641,8 +630,7 @@ def net_io_counters():
             break
 
         descr_len = unpack_from('<I', raw, base + OFF_DESCR_LEN)[0]
-        if descr_len > 256:
-            descr_len = 256
+        descr_len = min(descr_len, 256)
         name = raw[base + OFF_DESCR : base + OFF_DESCR + descr_len]
         name = name.rstrip(b'\x00').decode('ascii', 'replace').strip()
         if not name:
@@ -1178,11 +1166,9 @@ def _looks_like_stale_result(result):
     raising errors. We check containers and None — but NOT plain integers,
     since 0 is a common valid return (nice, cpu_num, etc.).
     """
-    if result is None or result == [] or result == '' or result == ():
+    if result is None or result in ([], '', ()):
         return True
-    if isinstance(result, tuple) and all(v == 0 or v == 0.0 for v in result):
-        return True
-    return False
+    return bool(isinstance(result, tuple) and all(v == 0 for v in result))
 
 
 def wrap_exceptions(fun):
@@ -1271,8 +1257,8 @@ class Process:
         try:
             with open(f'/proc/{self.pid}/stat', 'rb') as f:
                 data = f.read()
-        except FileNotFoundError:
-            raise NoSuchProcess(self.pid)
+        except FileNotFoundError as err:
+            raise NoSuchProcess(self.pid) from err
         except (OSError, ValueError):
             # Permission or other transient error — fall through
             code = cext.proc_status(self.pid)
@@ -1334,7 +1320,7 @@ class Process:
         for attempt in range(3):
             try:
                 return cext.proc_create_time_win32(self.pid)
-            except (OSError, ProcessLookupError):
+            except (OSError, ProcessLookupError) as err:
                 try:
                     os.kill(self.pid, 0)
                 except ProcessLookupError:
@@ -1343,7 +1329,7 @@ class Process:
                         # load. Retry with increasing delay.
                         time.sleep(0.05 * (attempt + 1))
                         continue
-                    raise NoSuchProcess(self.pid, self._name)
+                    raise NoSuchProcess(self.pid, self._name) from err
                 except PermissionError:
                     pass  # alive but access denied
                 return cext.proc_create_time(self.pid)
@@ -1466,26 +1452,31 @@ class Process:
         """
         if ioclass == IOPRIO_CLASS_NONE:
             if value and value != 0:
-                raise ValueError("ioclass accepts no value")
+                msg = "ioclass accepts no value"
+                raise ValueError(msg)
             win32_prio = 2  # Normal
         elif ioclass == IOPRIO_CLASS_RT:
             if value is not None and not (0 <= value <= 7):
-                raise ValueError("value must be between 0 and 7")
+                msg = "value must be between 0 and 7"
+                raise ValueError(msg)
             win32_prio = 3  # High
         elif ioclass == IOPRIO_CLASS_BE:
             if value is None:
                 value = 0
             if not (0 <= value <= 7):
-                raise ValueError("value must be between 0 and 7")
+                msg = "value must be between 0 and 7"
+                raise ValueError(msg)
             # Map BE value range to Win32 levels:
             # value 0-3 → Normal (2), value 4-7 → Low (1)
             win32_prio = 1 if value >= 4 else 2
         elif ioclass == IOPRIO_CLASS_IDLE:
             if value and value != 0:
-                raise ValueError("ioclass accepts no value")
+                msg = "ioclass accepts no value"
+                raise ValueError(msg)
             win32_prio = 0  # VeryLow
         else:
-            raise ValueError(f"{ioclass!r} is not a valid ioclass")
+            msg = f"{ioclass!r} is not a valid ioclass"
+            raise ValueError(msg)
         cext.proc_ionice_set(self.pid, win32_prio)
 
     @wrap_exceptions
@@ -1499,9 +1490,8 @@ class Process:
         allcpus = tuple(range(cpu_count_logical()))
         for cpu in cpus:
             if cpu not in allcpus:
-                raise ValueError(
-                    f"invalid CPU {cpu!r}; choose between {allcpus}"
-                )
+                msg = f"invalid CPU {cpu!r}; choose between {allcpus}"
+                raise ValueError(msg)
         cext.proc_cpu_affinity_set(self.pid, cpus)
 
     @wrap_exceptions

@@ -92,10 +92,10 @@ if LINUX:
     PROCFS_PATH = "/proc"
 
     from . import _pslinux as _psplatform
-    from ._pslinux import IOPRIO_CLASS_BE  # noqa: F401
-    from ._pslinux import IOPRIO_CLASS_IDLE  # noqa: F401
-    from ._pslinux import IOPRIO_CLASS_NONE  # noqa: F401
-    from ._pslinux import IOPRIO_CLASS_RT  # noqa: F401
+    from ._pslinux import IOPRIO_CLASS_BE
+    from ._pslinux import IOPRIO_CLASS_IDLE
+    from ._pslinux import IOPRIO_CLASS_NONE
+    from ._pslinux import IOPRIO_CLASS_RT
 
 elif WINDOWS:
     from . import _pswindows as _psplatform
@@ -156,8 +156,7 @@ __all__ = [
 
     "STATUS_RUNNING", "STATUS_IDLE", "STATUS_SLEEPING", "STATUS_DISK_SLEEP",
     "STATUS_STOPPED", "STATUS_TRACING_STOP", "STATUS_ZOMBIE", "STATUS_DEAD",
-    "STATUS_WAKING", "STATUS_LOCKED", "STATUS_WAITING", "STATUS_LOCKED",
-    "STATUS_PARKED",
+    "STATUS_WAKING", "STATUS_LOCKED", "STATUS_WAITING", "STATUS_PARKED",
 
     "CONN_ESTABLISHED", "CONN_SYN_SENT", "CONN_SYN_RECV", "CONN_FIN_WAIT1",
     "CONN_FIN_WAIT2", "CONN_TIME_WAIT", "CONN_CLOSE", "CONN_CLOSE_WAIT",

@@ -1,3 +1,7 @@
+# Copyright (c) 2009, Giampaolo Rodola'. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
 """Cygwin specific tests."""
 
 import os
@@ -5,13 +9,13 @@ import signal
 import subprocess
 import time
 
-import psutil
 import pytest
+
+import psutil
 from psutil import CYGWIN
 from psutil._common import STATUS_RUNNING
 from psutil._common import STATUS_SLEEPING
 from psutil._common import STATUS_STOPPED
-from psutil._common import STATUS_ZOMBIE
 
 pytestmark = pytest.mark.skipif(not CYGWIN, reason="CYGWIN only")
 
@@ -55,7 +59,7 @@ class TestT1ProcessStatus:
     def test_running_or_sleeping(self, current):
         """Current process should be running or sleeping."""
         result = current.status()
-        assert result in (STATUS_RUNNING, STATUS_SLEEPING)
+        assert result in {STATUS_RUNNING, STATUS_SLEEPING}
 
     def test_status_letter_mapping_complete(self):
         """Every /proc/[pid]/stat letter has a mapping."""
@@ -403,12 +407,12 @@ class TestT11Ionice:
 
     def test_ioclass_is_valid(self):
         result = psutil.Process().ionice()
-        assert result.ioclass in (
+        assert result.ioclass in {
             psutil.IOPRIO_CLASS_NONE,
             psutil.IOPRIO_CLASS_RT,
             psutil.IOPRIO_CLASS_BE,
             psutil.IOPRIO_CLASS_IDLE,
-        )
+        }
 
     def test_set_and_get(self):
         p = psutil.Process()
@@ -436,7 +440,9 @@ class TestT11Ionice:
 
 
 class TestT13bCreateTime:
-    """create_time() must have sub-second resolution for PID reuse detection."""
+    """create_time() must have sub-second resolution
+    for PID reuse detection.
+    """
 
     def test_has_fractional_part(self):
         """At least some processes should have non-zero fractional seconds."""
@@ -467,7 +473,9 @@ class TestT13bCreateTime:
         assert ct > 0
 
     def test_two_rapid_spawns_differ(self):
-        """Two processes spawned back-to-back should have different create_times."""
+        """Two processes spawned back-to-back should have
+        different create_times.
+        """
         c1 = subprocess.Popen(['sleep', '60'])
         c2 = subprocess.Popen(['sleep', '60'])
         try:

@@ -1007,7 +1007,7 @@ else:
 
 
 def normpath(path):
-    """Normalize a path for cross-source comparison in tests.
+    r"""Normalize a path for cross-source comparison in tests.
 
     Applies `os.path.realpath` and `os.path.normcase`, then on
     Windows resolves any 8.3 short-name components to their
@@ -2138,7 +2138,9 @@ if POSIX:
             # Rebase to a high address so fork() doesn't collide
             # with other allocations when later tests spawn children.
             subprocess.run(
-                ['rebase', '-b', '0x6F0000000', dst], capture_output=True
+                ['rebase', '-b', '0x6F0000000', dst],
+                capture_output=True,
+                check=False,
             )
         try:
             lib = ctypes.CDLL(dst)
@@ -2149,7 +2151,7 @@ if POSIX:
             # "unable to create interim mapping" because the file
             # is still memory-mapped but deleted from disk.
             if CYGWIN and lib._handle:
-                ctypes.cdll.LoadLibrary  # ensure cdll exists
+                _ = ctypes.cdll.LoadLibrary  # ensure cdll exists
                 import _ctypes
 
                 _ctypes.dlclose(lib._handle)
