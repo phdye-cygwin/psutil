@@ -9,7 +9,7 @@
  * Uses POSIX socket APIs throughout (no WinSock)
  * Removed WinSock dependencies to work properly with Cygwin's POSIX socket layer
  *
- * 
+ *
  */
 
 #include <Python.h>

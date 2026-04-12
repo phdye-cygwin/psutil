@@ -97,15 +97,15 @@ psutil_pids(PyObject *self, PyObject *args)
         py_pid = PyLong_FromLong(p->pid);
         if (!py_pid)
             goto error;
-        
+
         // Add to list
         if (PyList_Append(py_retlist, py_pid))
             goto error;
-        
+
         // Clear reference immediately to avoid accumulating references
         Py_DECREF(py_pid);
         py_pid = NULL;
-        
+
         // Note: We do NOT free 'p' as it points to Cygwin's internal data
     }
 
@@ -220,15 +220,15 @@ psutil_proc_name(PyObject *self, PyObject *args)
             if (p->ppid) {
                 char *s;
                 pname[0] = '\0';
-                
+
                 // Use safe string operations
                 strncpy(pname, p->progname_long, NT_MAX_PATH);
                 pname[NT_MAX_PATH] = '\0';  // Ensure null termination
-                
+
                 s = strrchr(pname, '.');
                 if (s && strcasecmp(s, ".exe") == 0)
                     *s = '\0';
-                
+
                 if (p->process_state & PID_EXITED || (p->exitcode & ~0xffff))
                     strncat(pname, " <defunct>", sizeof(pname) - strlen(pname) - 1);
             }
@@ -244,13 +244,13 @@ psutil_proc_name(PyObject *self, PyObject *args)
 
     // ALWAYS unlock the process table
     cygwin_internal(CW_UNLOCK_PINFO);
-    
+
     // If we didn't find the process, return appropriate error
     if (!result) {
         NoSuchProcess("cygwin_internal(CW_GETPINFO) - process not found");
         return NULL;
     }
-    
+
     return result;
 }
 
@@ -288,12 +288,12 @@ psutil_proc_ppid(PyObject *self, PyObject *args)
     }
 
     cygwin_internal(CW_UNLOCK_PINFO);
-    
+
     if (!result) {
         NoSuchProcess("cygwin_internal(CW_GETPINFO) - process not found");
         return NULL;
     }
-    
+
     return result;
 }
 
@@ -331,12 +331,12 @@ psutil_proc_create_time(PyObject *self, PyObject *args)
     }
 
     cygwin_internal(CW_UNLOCK_PINFO);
-    
+
     if (!result) {
         NoSuchProcess("cygwin_internal(CW_GETPINFO) - process not found");
         return NULL;
     }
-    
+
     return result;
 }
 
@@ -385,13 +385,13 @@ psutil_proc_exe(PyObject *self, PyObject *args)
 
     // ALWAYS unlock the process table
     cygwin_internal(CW_UNLOCK_PINFO);
-    
+
     // If we didn't find the process, return appropriate error
     if (!result) {
         NoSuchProcess("cygwin_internal(CW_GETPINFO) - process not found");
         return NULL;
     }
-    
+
     return result;
 }
 
@@ -555,12 +555,12 @@ psutil_proc_status(PyObject *self, PyObject *args)
     }
 
     cygwin_internal(CW_UNLOCK_PINFO);
-    
+
     if (!result) {
         NoSuchProcess("cygwin_internal(CW_GETPINFO) - process not found");
         return NULL;
     }
-    
+
     return result;
 }
 
@@ -645,28 +645,28 @@ psutil_proc_open_files(PyObject *self, PyObject *args)
 
         // Build path to fd symlink
         snprintf(link_path, sizeof(link_path), "%s/%s", path, entry->d_name);
-        
+
         // Read the symlink
         char target[4096];
         len = readlink(link_path, target, sizeof(target) - 1);
         if (len > 0) {
             target[len] = '\0';
-            
+
             // Only include regular files (not sockets, pipes, etc.)
             if (target[0] == '/') {
                 py_path = PyUnicode_DecodeFSDefault(target);
                 py_fd = PyLong_FromString(entry->d_name, NULL, 10);
-                
+
                 if (!py_path || !py_fd)
                     goto error;
-                
+
                 py_tuple = PyTuple_Pack(2, py_path, py_fd);
                 if (!py_tuple)
                     goto error;
-                
+
                 if (PyList_Append(py_retlist, py_tuple) < 0)
                     goto error;
-                
+
                 Py_DECREF(py_tuple);
                 Py_DECREF(py_path);
                 Py_DECREF(py_fd);
@@ -728,6 +728,6 @@ psutil_pid_exists_py(PyObject *self, PyObject *args)
     }
 
     cygwin_internal(CW_UNLOCK_PINFO);
-    
+
     return PyBool_FromLong(found);
 }
