@@ -213,6 +213,7 @@ ignore_decorators = [
 ignore_messages = [
     "Duplicate explicit target name",
     "Duplicate implicit target name",
+    "Duplicate name",
     "Hyperlink target \".*?\" is not referenced",
 ]
 
