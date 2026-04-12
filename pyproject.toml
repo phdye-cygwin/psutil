@@ -116,9 +116,9 @@ ignore = [
 "setup.py" = [
     "B904",  # Use ` raise from` to specify exception cause (PYTHON2.7 COMPAT)
     "C4",  # flake8-comprehensions (PYTHON2.7 COMPAT)
+    "EXE001",  # Shebang present but file not executable
     "FLY",  # flynt (PYTHON2.7 COMPAT)
     "FURB145",  # [*] Prefer `copy` method over slicing (PYTHON2.7 COMPAT)
-    "EXE001",  # Shebang present but file not executable
     "T201",
     "T203",
     "UP009",  # [*] UTF-8 encoding declaration is unnecessary (PYTHON2.7 COMPAT)
