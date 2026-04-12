@@ -90,11 +90,9 @@ install-git-hooks:  ## Install GIT pre-commit hook.
 # Tests
 # ===================================================================
 
-CYGWIN_IGNORES := $(shell $(PYTHON) -c "import sys; print('--ignore=psutil/tests/test_posix.py --ignore=psutil/tests/test_osx.py' if sys.platform.startswith('cygwin') else '')" 2>/dev/null)
-
 test:  ## Run all tests. To run a specific test do "make test ARGS=psutil.tests.test_system.TestDiskAPIs"
 	${MAKE} build
-	$(PYTHON_ENV_VARS) $(PYTHON) -m pytest --ignore=psutil/tests/test_memleaks.py --ignore=psutil/tests/test_sudo.py $(CYGWIN_IGNORES) $(ARGS)
+	$(PYTHON_ENV_VARS) $(PYTHON) -m pytest --ignore=psutil/tests/test_memleaks.py --ignore=psutil/tests/test_sudo.py $$($(PYTHON) -c "import sys; print('--ignore=psutil/tests/test_posix.py --ignore=psutil/tests/test_osx.py' if sys.platform.startswith('cygwin') else '')" 2>/dev/null) $(ARGS)
 
 test-parallel:  ## Run all tests in parallel.
 	${MAKE} build
