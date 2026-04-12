@@ -1587,6 +1587,17 @@ class TestProcess(PsutilTestCase):
                     "VERSIONER_PYTHON_VERSION",
                     "VERSIONER_PYTHON_VERSION",
                 ])
+            if CYGWIN:
+                # Cygwin's /proc/<pid>/environ is a live view of the
+                # process environ, unlike Linux which returns the
+                # exec-time snapshot. COLUMNS and LINES get set by
+                # terminal-aware C libraries (libreadline/libtermcap)
+                # post-startup via setenv(), bypassing Python's
+                # os.environ cache. psutil sees them in /proc/environ
+                # but os.environ does not — a cache-staleness
+                # artifact, not a port bug. Exclude them from the
+                # comparison.
+                exclude.extend(["COLUMNS", "LINES"])
             for name in exclude:
                 d.pop(name, None)
             return {
