@@ -84,8 +84,10 @@ _WIN32_TO_IOCLASS = {
 }
 
 __extra__all__ = [
-    "IOPRIO_CLASS_NONE", "IOPRIO_CLASS_RT",
-    "IOPRIO_CLASS_BE", "IOPRIO_CLASS_IDLE",
+    "IOPRIO_CLASS_NONE",
+    "IOPRIO_CLASS_RT",
+    "IOPRIO_CLASS_BE",
+    "IOPRIO_CLASS_IDLE",
 ]
 
 # =====================================================================
@@ -109,6 +111,7 @@ pio = namedtuple(
 puids = namedtuple('puids', ['real', 'effective', 'saved'])
 pgids = namedtuple('pgids', ['real', 'effective', 'saved'])
 from ._common import popenfile as pfile
+
 sswap = namedtuple(
     'sswap', ['total', 'used', 'free', 'percent', 'sin', 'sout']
 )
@@ -116,8 +119,19 @@ scpustats = namedtuple(
     'scpustats', ['ctx_switches', 'interrupts', 'soft_interrupts', 'syscalls']
 )
 pfullmem = namedtuple(
-    'pfullmem', ['rss', 'vms', 'shared', 'text', 'lib', 'data', 'dirty',
-                 'uss', 'pss', 'swap']
+    'pfullmem',
+    [
+        'rss',
+        'vms',
+        'shared',
+        'text',
+        'lib',
+        'data',
+        'dirty',
+        'uss',
+        'pss',
+        'swap',
+    ],
 )
 
 # Memory maps namedtuples for process memory mapping
@@ -278,7 +292,8 @@ def net_connections(kind='inet'):
                     if off + 24 > len(raw):
                         break
                     state, la, lp_raw, ra, rp_raw, pid = unpack_from(
-                        '<IIIIII', raw, off)
+                        '<IIIIII', raw, off
+                    )
                     lp = socket.ntohs(lp_raw & 0xFFFF)
                     rp = socket.ntohs(rp_raw & 0xFFFF)
                     lip = socket.inet_ntoa(pack('<I', la))
@@ -286,8 +301,15 @@ def net_connections(kind='inet'):
                     laddr_t = addr(lip, lp)
                     raddr_t = addr(rip, rp) if (ra or rp) else ()
                     conn = conn_to_ntuple(
-                        -1, _AF_INET, socket.SOCK_STREAM,
-                        laddr_t, raddr_t, state, TCP_STATUSES, pid)
+                        -1,
+                        _AF_INET,
+                        socket.SOCK_STREAM,
+                        laddr_t,
+                        raddr_t,
+                        state,
+                        TCP_STATUSES,
+                        pid,
+                    )
                     connections.append(conn)
 
     if want_tcp6 and _AF_INET6 is not None:
@@ -306,14 +328,12 @@ def net_connections(kind='inet'):
                     off = 4 + i * 56
                     if off + 56 > len(raw):
                         break
-                    la6 = raw[off:off + 16]
+                    la6 = raw[off : off + 16]
                     lscope = unpack_from('<I', raw, off + 16)[0]
-                    lp = socket.ntohs(
-                        unpack_from('<H', raw, off + 20)[0])
-                    ra6 = raw[off + 24:off + 40]
+                    lp = socket.ntohs(unpack_from('<H', raw, off + 20)[0])
+                    ra6 = raw[off + 24 : off + 40]
                     rscope = unpack_from('<I', raw, off + 40)[0]
-                    rp = socket.ntohs(
-                        unpack_from('<H', raw, off + 44)[0])
+                    rp = socket.ntohs(unpack_from('<H', raw, off + 44)[0])
                     state = unpack_from('<I', raw, off + 48)[0]
                     pid = unpack_from('<I', raw, off + 52)[0]
                     lip = socket.inet_ntop(_AF_INET6, la6)
@@ -321,8 +341,15 @@ def net_connections(kind='inet'):
                     laddr_t = addr(lip, lp)
                     raddr_t = addr(rip, rp) if any(ra6) or rp else ()
                     conn = conn_to_ntuple(
-                        -1, _AF_INET6, socket.SOCK_STREAM,
-                        laddr_t, raddr_t, state, TCP_STATUSES, pid)
+                        -1,
+                        _AF_INET6,
+                        socket.SOCK_STREAM,
+                        laddr_t,
+                        raddr_t,
+                        state,
+                        TCP_STATUSES,
+                        pid,
+                    )
                     connections.append(conn)
 
     if want_udp4:
@@ -344,8 +371,15 @@ def net_connections(kind='inet'):
                     lip = socket.inet_ntoa(pack('<I', la))
                     laddr_t = addr(lip, lp)
                     conn = conn_to_ntuple(
-                        -1, _AF_INET, socket.SOCK_DGRAM,
-                        laddr_t, (), CONN_NONE, TCP_STATUSES, pid)
+                        -1,
+                        _AF_INET,
+                        socket.SOCK_DGRAM,
+                        laddr_t,
+                        (),
+                        CONN_NONE,
+                        TCP_STATUSES,
+                        pid,
+                    )
                     connections.append(conn)
 
     if want_udp6 and _AF_INET6 is not None:
@@ -354,8 +388,7 @@ def net_connections(kind='inet'):
         iphlpapi.GetExtendedUdpTable(None, byref(size), 0, 23, 1, 0)
         if size.value > 0:
             buf = ctypes.create_string_buffer(size.value)
-            ret = iphlpapi.GetExtendedUdpTable(
-                buf, byref(size), 0, 23, 1, 0)
+            ret = iphlpapi.GetExtendedUdpTable(buf, byref(size), 0, 23, 1, 0)
             if ret == 0:
                 raw = buf.raw
                 num = unpack_from('<I', raw, 0)[0]
@@ -365,16 +398,22 @@ def net_connections(kind='inet'):
                     off = 4 + i * 28
                     if off + 28 > len(raw):
                         break
-                    la6 = raw[off:off + 16]
+                    la6 = raw[off : off + 16]
                     lscope = unpack_from('<I', raw, off + 16)[0]
-                    lp = socket.ntohs(
-                        unpack_from('<H', raw, off + 20)[0])
+                    lp = socket.ntohs(unpack_from('<H', raw, off + 20)[0])
                     pid = unpack_from('<I', raw, off + 24)[0]
                     lip = socket.inet_ntop(_AF_INET6, la6)
                     laddr_t = addr(lip, lp)
                     conn = conn_to_ntuple(
-                        -1, _AF_INET6, socket.SOCK_DGRAM,
-                        laddr_t, (), CONN_NONE, TCP_STATUSES, pid)
+                        -1,
+                        _AF_INET6,
+                        socket.SOCK_DGRAM,
+                        laddr_t,
+                        (),
+                        CONN_NONE,
+                        TCP_STATUSES,
+                        pid,
+                    )
                     connections.append(conn)
 
     # GetExtendedUdpTable can return duplicate entries for multicast
@@ -429,7 +468,9 @@ def net_if_addrs():
             if family == 0 or not addr:
                 continue
             filtered.append((
-                name, family, addr,
+                name,
+                family,
+                addr,
                 mask or None,
                 bcast or None,
                 ptp or None,
@@ -602,25 +643,35 @@ def net_io_counters():
         descr_len = unpack_from('<I', raw, base + OFF_DESCR_LEN)[0]
         if descr_len > 256:
             descr_len = 256
-        name = raw[base + OFF_DESCR:base + OFF_DESCR + descr_len]
+        name = raw[base + OFF_DESCR : base + OFF_DESCR + descr_len]
         name = name.rstrip(b'\x00').decode('ascii', 'replace').strip()
         if not name:
             name = f"iface{i}"
 
         bytes_recv = unpack_from('<I', raw, base + OFF_IN_OCTETS)[0]
         bytes_sent = unpack_from('<I', raw, base + OFF_OUT_OCTETS)[0]
-        pkts_recv = (unpack_from('<I', raw, base + OFF_IN_UCAST)[0]
-                     + unpack_from('<I', raw, base + OFF_IN_NUCAST)[0])
-        pkts_sent = (unpack_from('<I', raw, base + OFF_OUT_UCAST)[0]
-                     + unpack_from('<I', raw, base + OFF_OUT_NUCAST)[0])
+        pkts_recv = (
+            unpack_from('<I', raw, base + OFF_IN_UCAST)[0]
+            + unpack_from('<I', raw, base + OFF_IN_NUCAST)[0]
+        )
+        pkts_sent = (
+            unpack_from('<I', raw, base + OFF_OUT_UCAST)[0]
+            + unpack_from('<I', raw, base + OFF_OUT_NUCAST)[0]
+        )
         errin = unpack_from('<I', raw, base + OFF_IN_ERRORS)[0]
         errout = unpack_from('<I', raw, base + OFF_OUT_ERRORS)[0]
         dropin = unpack_from('<I', raw, base + OFF_IN_DISCARDS)[0]
         dropout = unpack_from('<I', raw, base + OFF_OUT_DISCARDS)[0]
 
         result[name] = snetio(
-            bytes_sent, bytes_recv, pkts_sent, pkts_recv,
-            errin, errout, dropin, dropout,
+            bytes_sent,
+            bytes_recv,
+            pkts_sent,
+            pkts_recv,
+            errin,
+            errout,
+            dropin,
+            dropout,
         )
 
     return result
@@ -633,7 +684,7 @@ def net_io_counters():
 
 def disk_partitions(all=False):
     """Return mounted disk partitions.
-        Return proper namedtuples with mountpoint attribute
+    Return proper namedtuples with mountpoint attribute
     """
     try:
         # Get raw data from C extension
@@ -1157,16 +1208,13 @@ def wrap_exceptions(fun):
             except (FileNotFoundError, ProcessLookupError) as e2:
                 if not pid_exists(self.pid):
                     raise NoSuchProcess(self.pid, self._name) from e2
-                raise ZombieProcess(
-                    self.pid, self._name, self._ppid) from e2
+                raise ZombieProcess(self.pid, self._name, self._ppid) from e2
         except PermissionError as e:
             raise AccessDenied(self.pid, self._name) from e
 
         return result
 
     return wrapper
-
-
 
 
 class Process:
@@ -1390,6 +1438,7 @@ class Process:
         """
         if self.pid == os.getpid():
             import ctypes
+
             kernel32 = ctypes.CDLL('kernel32.dll')
             return kernel32.GetCurrentProcessorNumber()
         return 0
@@ -1404,7 +1453,8 @@ class Process:
 
         win32_prio = cext.proc_ionice_get(self.pid)
         ioclass, value = _WIN32_TO_IOCLASS.get(
-            win32_prio, (IOPRIO_CLASS_NONE, 0))
+            win32_prio, (IOPRIO_CLASS_NONE, 0)
+        )
         return pionice(ioclass, value)
 
     @wrap_exceptions
@@ -1450,7 +1500,8 @@ class Process:
         for cpu in cpus:
             if cpu not in allcpus:
                 raise ValueError(
-                    f"invalid CPU {cpu!r}; choose between {allcpus}")
+                    f"invalid CPU {cpu!r}; choose between {allcpus}"
+                )
         cext.proc_cpu_affinity_set(self.pid, cpus)
 
     @wrap_exceptions
@@ -1479,8 +1530,9 @@ class Process:
         from ._common import isfile_strict
 
         files_data = cext.proc_open_files(self.pid)
-        return [pfile(path, fd) for path, fd in files_data
-                if isfile_strict(path)]
+        return [
+            pfile(path, fd) for path, fd in files_data if isfile_strict(path)
+        ]
 
     @wrap_exceptions
     def net_connections(self, kind='inet'):
@@ -1508,6 +1560,7 @@ class Process:
         # Filter system-wide connections by Cygwin PID.
         # net_connections() already translates Windows PIDs to Cygwin PIDs.
         from ._common import pconn
+
         all_conns = net_connections(kind)
         connections = []
         matched_fds = set()
@@ -1531,10 +1584,16 @@ class Process:
                             s.close()
                     except OSError:
                         continue
-            connections.append(pconn(
-                fd, conn.family, conn.type,
-                conn.laddr, conn.raddr, conn.status,
-            ))
+            connections.append(
+                pconn(
+                    fd,
+                    conn.family,
+                    conn.type,
+                    conn.laddr,
+                    conn.raddr,
+                    conn.status,
+                )
+            )
         return connections
 
     @wrap_exceptions

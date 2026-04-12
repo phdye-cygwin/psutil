@@ -6,7 +6,6 @@
 
 """A super simple linter to check C syntax."""
 
-
 import argparse
 import sys
 

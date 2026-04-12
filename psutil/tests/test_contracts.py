@@ -152,14 +152,18 @@ class TestAvailProcessAPIs(PsutilTestCase):
         assert hasattr(psutil.Process, "terminal") == POSIX
 
     def test_ionice(self):
-        assert hasattr(psutil.Process, "ionice") == (LINUX or WINDOWS or CYGWIN)
+        assert hasattr(psutil.Process, "ionice") == (
+            LINUX or WINDOWS or CYGWIN
+        )
 
     @pytest.mark.skipif(
         GITHUB_ACTIONS and LINUX,
         reason="unsupported on GITHUB_ACTIONS + LINUX",
     )
     def test_rlimit(self):
-        assert hasattr(psutil.Process, "rlimit") == (LINUX or FREEBSD or CYGWIN)
+        assert hasattr(psutil.Process, "rlimit") == (
+            LINUX or FREEBSD or CYGWIN
+        )
 
     def test_io_counters(self):
         hasit = hasattr(psutil.Process, "io_counters")

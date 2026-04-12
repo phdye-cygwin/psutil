@@ -1167,9 +1167,18 @@ class PsutilTestCase(unittest.TestCase):
     # Cygwin's /proc persists after the Windows process dies.
     # These methods return stale empty/zero data instead of NSP.
     _CYGWIN_STALE_OK = frozenset({
-        'cmdline', 'cpu_num', 'cwd', 'gids', 'net_connections',
-        'nice', 'num_threads', 'open_files', 'terminal', 'threads',
-        'uids', 'username',
+        'cmdline',
+        'cpu_num',
+        'cwd',
+        'gids',
+        'net_connections',
+        'nice',
+        'num_threads',
+        'open_files',
+        'terminal',
+        'threads',
+        'uids',
+        'username',
     })
 
     def assert_proc_gone(self, proc):
@@ -2129,8 +2138,8 @@ if POSIX:
             # Rebase to a high address so fork() doesn't collide
             # with other allocations when later tests spawn children.
             subprocess.run(
-                ['rebase', '-b', '0x6F0000000', dst],
-                capture_output=True)
+                ['rebase', '-b', '0x6F0000000', dst], capture_output=True
+            )
         try:
             lib = ctypes.CDLL(dst)
             yield dst
@@ -2142,6 +2151,7 @@ if POSIX:
             if CYGWIN and lib._handle:
                 ctypes.cdll.LoadLibrary  # ensure cdll exists
                 import _ctypes
+
                 _ctypes.dlclose(lib._handle)
             safe_rmpath(dst)
 

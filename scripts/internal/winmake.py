@@ -11,7 +11,6 @@ This was originally written as a bat file but they suck so much
 that they should be deemed illegal!
 """
 
-
 import argparse
 import atexit
 import ctypes

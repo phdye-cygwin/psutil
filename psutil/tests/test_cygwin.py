@@ -13,7 +13,6 @@ from psutil._common import STATUS_SLEEPING
 from psutil._common import STATUS_STOPPED
 from psutil._common import STATUS_ZOMBIE
 
-
 pytestmark = pytest.mark.skipif(not CYGWIN, reason="CYGWIN only")
 
 
@@ -31,9 +30,9 @@ class TestT1ProcessStatus:
 
     def test_returns_string(self, current):
         result = current.status()
-        assert isinstance(result, str), (
-            f"status() returned {type(result).__name__}, expected str"
-        )
+        assert isinstance(
+            result, str
+        ), f"status() returned {type(result).__name__}, expected str"
 
     def test_is_known_constant(self, current):
         valid = {
@@ -49,9 +48,9 @@ class TestT1ProcessStatus:
             psutil.STATUS_WAKING,
         }
         result = current.status()
-        assert result in valid or result == '?', (
-            f"status() returned {result!r}, not a known STATUS_* constant"
-        )
+        assert (
+            result in valid or result == '?'
+        ), f"status() returned {result!r}, not a known STATUS_* constant"
 
     def test_running_or_sleeping(self, current):
         """Current process should be running or sleeping."""
@@ -61,11 +60,12 @@ class TestT1ProcessStatus:
     def test_status_letter_mapping_complete(self):
         """Every /proc/[pid]/stat letter has a mapping."""
         from psutil._pscygwin import PROC_STATUSES_LETTER
+
         # All letters Linux uses must be mapped
         for letter in ('R', 'S', 'D', 'T', 'Z', 'X', 'x'):
-            assert letter in PROC_STATUSES_LETTER, (
-                f"letter {letter!r} missing from PROC_STATUSES_LETTER"
-            )
+            assert (
+                letter in PROC_STATUSES_LETTER
+            ), f"letter {letter!r} missing from PROC_STATUSES_LETTER"
 
     def test_stopped_process(self):
         """A stopped process should report STATUS_STOPPED."""
@@ -95,14 +95,22 @@ class TestT2MemoryPercent:
     """memory_percent() must work — requires pfullmem at module scope."""
 
     def test_pfullmem_at_module_scope(self):
-        assert hasattr(psutil._pscygwin, 'pfullmem'), (
-            "pfullmem must be defined at module scope in _pscygwin"
-        )
+        assert hasattr(
+            psutil._pscygwin, 'pfullmem'
+        ), "pfullmem must be defined at module scope in _pscygwin"
 
     def test_pfullmem_fields(self):
         expected = [
-            'rss', 'vms', 'shared', 'text', 'lib', 'data', 'dirty',
-            'uss', 'pss', 'swap',
+            'rss',
+            'vms',
+            'shared',
+            'text',
+            'lib',
+            'data',
+            'dirty',
+            'uss',
+            'pss',
+            'swap',
         ]
         assert list(psutil._pscygwin.pfullmem._fields) == expected
 
@@ -175,9 +183,9 @@ class TestT4NetIfStats:
 
     def test_isup_is_bool(self):
         for name, stats in psutil.net_if_stats().items():
-            assert isinstance(stats.isup, bool), (
-                f"{name}: isup is {type(stats.isup).__name__}"
-            )
+            assert isinstance(
+                stats.isup, bool
+            ), f"{name}: isup is {type(stats.isup).__name__}"
 
     def test_mtu_positive(self):
         stats = psutil.net_if_stats()
@@ -243,9 +251,7 @@ class TestT6CpuStats:
     def test_all_fields_are_int(self):
         for field in psutil.cpu_stats()._fields:
             val = getattr(psutil.cpu_stats(), field)
-            assert isinstance(val, int), (
-                f"{field} is {type(val).__name__}"
-            )
+            assert isinstance(val, int), f"{field} is {type(val).__name__}"
 
     def test_not_all_zeros(self):
         s = psutil.cpu_stats()
@@ -275,11 +281,13 @@ class TestT7Environ:
 
     def test_child_inherits_env(self):
         import uuid
+
         marker = f"PSUTIL_TEST_{uuid.uuid4().hex[:8]}"
         env = os.environ.copy()
         env[marker] = "hello"
         child = subprocess.Popen(
-            ['sleep', '60'], env=env,
+            ['sleep', '60'],
+            env=env,
         )
         try:
             time.sleep(0.5)
@@ -444,12 +452,15 @@ class TestT13bCreateTime:
                 if ct % 1 != 0.0:
                     found_fractional = True
                     break
-            except (psutil.NoSuchProcess, psutil.AccessDenied,
-                    psutil.ZombieProcess):
+            except (
+                psutil.NoSuchProcess,
+                psutil.AccessDenied,
+                psutil.ZombieProcess,
+            ):
                 continue
-        assert found_fractional, (
-            "No process has sub-second create_time — still using time_t?"
-        )
+        assert (
+            found_fractional
+        ), "No process has sub-second create_time — still using time_t?"
 
     def test_current_process_positive(self):
         ct = psutil.Process().create_time()
@@ -467,7 +478,7 @@ class TestT13bCreateTime:
             # With 100ns resolution they should differ.
             assert ct1 != ct2, (
                 f"Both processes have identical create_time {ct1} — "
-                f"resolution too low for PID reuse detection"
+                "resolution too low for PID reuse detection"
             )
         finally:
             c1.terminate()

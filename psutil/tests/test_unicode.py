@@ -274,11 +274,10 @@ class TestFSAPIs(BaseUnicodeTest):
     @pytest.mark.skipif(not HAS_MEMORY_MAPS, reason="not supported")
     def test_memory_maps(self):
         with copyload_shared_lib(suffix=self.funky_suffix) as funky_path:
-            libpaths = [
-                x.path for x in psutil.Process().memory_maps()
-            ]
+            libpaths = [x.path for x in psutil.Process().memory_maps()]
             matches = [
-                x for x in libpaths
+                x
+                for x in libpaths
                 if os.path.exists(x) and os.path.samefile(x, funky_path)
             ]
             assert matches, (
